@@ -1,7 +1,12 @@
 /**
  * [BoxLang]
  *
- * Copyright [2025] [Ortus Solutions, Corp]
+ * Copyright [2026] [Ortus Solutions, Corp]
+ *
+ * Licensed under the BoxLang Plus Subscription License.
+ * ----------------------------------------------------------------------------------
+ * Interceptor that validates a BoxLang+ (bx-plus) license exists
+ * before the module can be used. Fires on {@code onRuntimeStart}.
  */
 package ortus.boxlang.jwt.interceptors;
 

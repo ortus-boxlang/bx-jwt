@@ -32,18 +32,19 @@ repositories {
 }
 
 dependencies {
-	// Look for it in the local build directory
-	// You must run `./gradle build -x test` in the BoxLang project
-	if ( file( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
-		compileOnly files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-		testImplementation files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
-	} else {
+	// // Look for it in the local build directory
+	// // You must run `./gradle build -x test` in the BoxLang project
+	// if ( file( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' ).exists() ) {
+	// 	compileOnly files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	// 	testImplementation files( '../boxlang/build/libs/boxlang-' + boxlangVersion + '.jar' )
+	// } else {
 		// Downloaded Dependencies from s3
 		compileOnly files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
 		testImplementation files( 'src/test/resources/libs/boxlang-' + boxlangVersion + '.jar' )
-	}
+	// }
 
 	// Implementation Dependencies FOR THIS MODULE
+	implementation 'com.nimbusds:nimbus-jose-jwt:10.+'
 
 	// Test Frameworks
 	testImplementation 'io.github.cdimascio:dotenv-java:3.2.0'
