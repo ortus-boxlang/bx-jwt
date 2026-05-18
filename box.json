@@ -1,22 +1,22 @@
 {
-	"name": "@MODULE_NAME@",
+	"name": "BoxLang JWT/JWE Support",
 	"version": "@build.version@+@build.number@",
-	"location": "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/@MODULE_SLUG@/@build.version@/@MODULE_SLUG@-@build.version@.zip",
+	"location": "https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-jwt/@build.version@/bx-jwt-@build.version@.zip",
 	"author": "Ortus Solutions",
-	"homepage": "https://github.com/ortus-boxlang/@MODULE_SLUG@",
-	"documentation": "https://github.com/ortus-boxlang/@MODULE_SLUG@",
+	"homepage": "https://github.com/ortus-boxlang/bx-jwt",
+	"documentation": "https://github.com/ortus-boxlang/bx-jwt",
 	"repository": {
 		"type": "git",
-		"URL": "https://github.com/ortus-boxlang/@MODULE_SLUG@"
+		"URL": "https://github.com/ortus-boxlang/bx-jwt"
 	},
 	"bugs": "https://ortussolutions.atlassian.net/browse/BLMODULES",
-	"slug": "@MODULE_SLUG@",
+	"slug": "bx-jwt",
 	"shortDescription": "Module template for BoxLang modules",
 	"type": "boxlang-modules",
 	"keywords": ["boxlang"],
 	"boxlang": {
 		"minimumVersion": "1.0.0",
-		"moduleName": "@MODULE_REGISTERED_NAME@"
+		"moduleName": "bxjwt"
 	},
 	"private": false,
 	"license": [
