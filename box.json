@@ -11,9 +11,11 @@
 	},
 	"bugs": "https://ortussolutions.atlassian.net/browse/BLMODULES",
 	"slug": "bx-jwt",
-	"shortDescription": "Module template for BoxLang modules",
+	"shortDescription": "Provides JWT/JWE support for BoxLang",
 	"type": "boxlang-modules",
-	"keywords": ["boxlang"],
+	"keywords": [
+		"boxlang"
+	],
 	"boxlang": {
 		"minimumVersion": "1.0.0",
 		"moduleName": "bxjwt"
