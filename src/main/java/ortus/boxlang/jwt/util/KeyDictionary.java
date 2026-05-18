@@ -1,16 +1,15 @@
 /**
  * [BoxLang]
  *
- * Copyright [2023] [Ortus Solutions, Corp]
+ * Copyright [2026] [Ortus Solutions, Corp]
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
- * License. You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
- * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
- * governing permissions and limitations under the License.
+ * Licensed under the BoxLang Plus Subscription License.
+ * ----------------------------------------------------------------------------------
+ */
+
+/**
+ * Central registry of BoxLang {@code Key} constants used throughout the
+ * bx-jwt module. Avoids stringly-typed lookups in structs and scopes.
  */
 package ortus.boxlang.jwt.util;
 
@@ -21,6 +20,34 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public class KeyDictionary {
 
-	public static final Key moduleName = new Key( "bxjwt" );
+	public static final Key	moduleName				= new Key( "bxjwt" );
+	public static final Key	JWTService				= new Key( "JWTService" );
+
+	public static final Key	algorithm				= new Key( "algorithm" );
+	public static final Key	keyAlgorithm			= new Key( "keyAlgorithm" );
+	public static final Key	encAlgorithm			= new Key( "encAlgorithm" );
+	public static final Key	keys					= new Key( "keys" );
+	public static final Key	secret					= new Key( "secret" );
+	public static final Key	privateKey				= new Key( "privateKey" );
+	public static final Key	publicKey				= new Key( "publicKey" );
+	public static final Key	jwk						= new Key( "jwk" );
+	public static final Key	payload					= new Key( "payload" );
+	public static final Key	headers					= new Key( "headers" );
+	public static final Key	claims					= new Key( "claims" );
+	public static final Key	options					= new Key( "options" );
+	public static final Key	generateIat				= new Key( "generateIat" );
+	public static final Key	generateJti				= new Key( "generateJti" );
+	public static final Key	clockSkew				= new Key( "clockSkew" );
+	public static final Key	validateClaims			= new Key( "validateClaims" );
+
+	public static final Key	defaultSigningKey		= new Key( "defaultSigningKey" );
+	public static final Key	defaultVerifyKey		= new Key( "defaultVerifyKey" );
+	public static final Key	defaultEncryptionKey	= new Key( "defaultEncryptionKey" );
+	public static final Key	defaultDecryptionKey	= new Key( "defaultDecryptionKey" );
+	public static final Key	defaultAlgorithm		= new Key( "defaultAlgorithm" );
+	public static final Key	defaultKeyAlgorithm		= new Key( "defaultKeyAlgorithm" );
+	public static final Key	defaultEncAlgorithm		= new Key( "defaultEncAlgorithm" );
+
+	public static final Key	isValidLicense			= new Key( "isValidLicense" );
 
 }

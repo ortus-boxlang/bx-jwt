@@ -1,0 +1,155 @@
+/**
+ * Fluent builder for creating signed (JWS) and encrypted (JWE) JWTs.
+ * Returned by jwtNew(). Terminates with .sign() or .encrypt().
+ */
+class {
+
+	property name="payload";
+	property name="headers";
+	property name="service";
+
+	/**
+	 * Constructor. Receives the JWTService instance from jwtNew().
+	 */
+	function init( required service ){
+		this.payload = {};
+		this.headers = {};
+		this.service = arguments.service;
+		return this;
+	}
+
+	/**
+	 * Sets the subject (sub) claim.
+	 */
+	function subject( required val ){
+		this.payload.sub = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Sets the issuer (iss) claim.
+	 */
+	function issuer( required val ){
+		this.payload.iss = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Sets the audience (aud) claim. Accepts string or array.
+	 */
+	function audience( required val ){
+		this.payload.aud = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Sets a custom claim.
+	 */
+	function claim( required key, required val ){
+		this.payload[ arguments.key ] = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Sets the entire payload at once (struct or string).
+	 */
+	function payload( required val ){
+		if ( isStruct( arguments.val ) ) {
+			this.payload = arguments.val;
+		} else {
+			this._stringPayload = arguments.val;
+		}
+		return this;
+	}
+
+	/**
+	 * Sets the expiration (exp) claim as now + seconds.
+	 */
+	function expireIn( required seconds ){
+		this.payload.exp = dateAdd( "s", arguments.seconds, now() );
+		return this;
+	}
+
+	/**
+	 * Sets the expiration (exp) claim as an explicit DateTime.
+	 */
+	function expireAt( required date ){
+		this.payload.exp = arguments.date;
+		return this;
+	}
+
+	/**
+	 * Sets the issued-at (iat) claim to now.
+	 */
+	function issuedNow(){
+		this.payload.iat = now();
+		return this;
+	}
+
+	/**
+	 * Sets the issued-at (iat) claim to an explicit DateTime.
+	 */
+	function issuedAt( required date ){
+		this.payload.iat = arguments.date;
+		return this;
+	}
+
+	/**
+	 * Sets the not-before (nbf) claim.
+	 */
+	function notBefore( required date ){
+		this.payload.nbf = arguments.date;
+		return this;
+	}
+
+	/**
+	 * Sets the JWT ID (jti) claim.
+	 */
+	function jti( required val ){
+		this.payload.jti = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Sets a custom header field.
+	 */
+	function header( required key, required val ){
+		this.headers[ arguments.key ] = arguments.val;
+		return this;
+	}
+
+	/**
+	 * Terminal method. Signs the JWT and returns the token string.
+	 *
+	 * @key       Named key, PEM string, secret, or Java Key. Optional if defaults set.
+	 * @algorithm JWS algorithm (HS256, RS256, etc). Optional.
+	 */
+	function sign( key, algorithm ){
+		var payloadToUse = isNull( this._stringPayload ) ? this.payload : this._stringPayload;
+		var args = { payload : payloadToUse, key : arguments.key, options : { headers : this.headers } };
+		if ( !isNull( arguments.algorithm ) ) {
+			args.algorithm = arguments.algorithm;
+		}
+		return jwtCreate( argumentCollection = args );
+	}
+
+	/**
+	 * Terminal method. Encrypts the payload as a JWE and returns the token string.
+	 *
+	 * @key           Named key, PEM string, or Java Key. Optional if defaults set.
+	 * @keyAlgorithm  JWE key management algorithm. Optional.
+	 * @encAlgorithm  JWE content encryption algorithm. Optional.
+	 */
+	function encrypt( key, keyAlgorithm, encAlgorithm ){
+		var payloadToUse = isNull( this._stringPayload ) ? this.payload : this._stringPayload;
+		var args = { payload : payloadToUse, key : arguments.key, options : { headers : this.headers } };
+		if ( !isNull( arguments.keyAlgorithm ) ) {
+			args.options.keyAlgorithm = arguments.keyAlgorithm;
+		}
+		if ( !isNull( arguments.encAlgorithm ) ) {
+			args.options.encAlgorithm = arguments.encAlgorithm;
+		}
+		return jwtEncrypt( argumentCollection = args );
+	}
+
+}
