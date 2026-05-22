@@ -147,7 +147,7 @@ public class JWTService extends BaseService {
 
 	/**
 	 * --------------------------------------------------------------------------
-	 * Methods for JWT Operations and Key Management
+	 * Key Management Operations
 	 * --------------------------------------------------------------------------
 	 */
 
@@ -158,7 +158,6 @@ public class JWTService extends BaseService {
 		}
 
 		JWTKeyEntry	entry		= new JWTKeyEntry( name, algorithm );
-
 		Object		secretVal	= keyConfig.get( KeyDictionary.secret );
 		if ( secretVal != null ) {
 			String secret = interpolateEnvVars( StringCaster.cast( secretVal ) );
@@ -188,34 +187,76 @@ public class JWTService extends BaseService {
 			}
 		}
 
-		keyRegistry.put( name, entry );
+		this.keyRegistry.put( name, entry );
 		return entry;
 	}
 
+	/**
+	 * Get a registered key entry by name.
+	 *
+	 * @param name The name of the key to retrieve.
+	 *
+	 * @throws JWTKeyException if the key is not found in the registry.
+	 *
+	 * @return The JWTKeyEntry associated with the given name.
+	 */
 	public JWTKeyEntry getKey( String name ) {
-		JWTKeyEntry entry = keyRegistry.get( name );
+		JWTKeyEntry entry = this.keyRegistry.get( name );
 		if ( entry == null ) {
 			throw new JWTKeyException( "Key \"" + name + "\" is not registered" );
 		}
 		return entry;
 	}
 
+	/**
+	 * Removes a registered key entry by name.
+	 *
+	 * @param name The name of the key to remove.
+	 */
 	public void removeKey( String name ) {
-		keyRegistry.remove( name );
+		this.keyRegistry.remove( name );
 	}
 
+	/**
+	 * Clears all registered key entries.
+	 */
 	public void clearKeys() {
-		keyRegistry.clear();
+		this.keyRegistry.clear();
 	}
 
+	/**
+	 * Returns an array of all registered key names.
+	 *
+	 * @return An Array containing the names of all registered keys.
+	 */
 	public Array getKeyNames() {
-		return Array.fromSet( keyRegistry.keySet() );
+		return Array.fromSet( this.keyRegistry.keySet() );
 	}
 
+	/**
+	 * Checks if a key with the given name is registered.
+	 *
+	 * @param name The name of the key to check.
+	 *
+	 * @return true if the key is registered, false otherwise.
+	 */
 	public boolean hasKey( String name ) {
 		return keyRegistry.containsKey( name );
 	}
 
+	/**
+	 * --------------------------------------------------------------------------
+	 * JWT REsolutions + Parsing
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Resolve the signing key from the registered keys based on the provided key name or defaults.
+	 *
+	 * @param name The name of the key to resolve for signing.
+	 *
+	 * @return The resolved signing key.
+	 */
 	public java.security.Key resolveSigningKey( String name ) {
 		JWTKeyEntry entry = getKey( name );
 		if ( entry.hasPrivateKey() ) {
@@ -227,6 +268,13 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Key \"" + name + "\" has no private key or secret key for signing" );
 	}
 
+	/**
+	 * Resolve the verification key from the registered keys based on the provided key name or defaults.
+	 *
+	 * @param name The name of the key to resolve for verification.
+	 *
+	 * @return The resolved verification key.
+	 */
 	public java.security.Key resolveVerificationKey( String name ) {
 		JWTKeyEntry entry = getKey( name );
 		if ( entry.hasPublicKey() ) {
@@ -238,6 +286,13 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Key \"" + name + "\" has no public key or secret key for verification" );
 	}
 
+	/**
+	 * Resolve the encryption key from the registered keys based on the provided key name or defaults.
+	 *
+	 * @param name The name of the key to resolve for encryption.
+	 *
+	 * @return The resolved encryption key.
+	 */
 	public java.security.Key resolveEncryptionKey( String name ) {
 		JWTKeyEntry entry = getKey( name );
 		if ( entry.hasPublicKey() ) {
@@ -249,6 +304,13 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Key \"" + name + "\" has no public key or secret key for encryption" );
 	}
 
+	/**
+	 * Resolve the decryption key from the registered keys based on the provided key name or defaults.
+	 *
+	 * @param name The name of the key to resolve for decryption.
+	 *
+	 * @return The resolved decryption key.
+	 */
 	public java.security.Key resolveDecryptionKey( String name ) {
 		JWTKeyEntry entry = getKey( name );
 		if ( entry.hasPrivateKey() ) {
@@ -260,6 +322,17 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Key \"" + name + "\" has no private key or secret key for decryption" );
 	}
 
+	/**
+	 * Parses a key from various formats such as named keys, PEM strings, JWK structs, or raw secrets.
+	 * If it's already a java.security.Key instance, it is returned directly.
+	 *
+	 * @param keyArg    The key argument to parse.
+	 * @param algorithm The algorithm to use for parsing the key.
+	 *
+	 * @throws JWTKeyException if the key cannot be parsed or is invalid for the specified algorithm.
+	 *
+	 * @return The parsed key.
+	 */
 	public java.security.Key parseKey( Object keyArg, String algorithm ) {
 		if ( keyArg == null ) {
 			throw new JWTKeyException( "Key argument is null. Provide a named key, PEM string, JWK struct, or raw secret." );
@@ -267,21 +340,45 @@ public class JWTService extends BaseService {
 		if ( keyArg instanceof java.security.Key jKey ) {
 			return jKey;
 		}
+
 		String keyStr = StringCaster.cast( keyArg );
+
+		// If the string looks like a PEM-encoded key, attempt to parse it as PEM. This covers both private and public keys.
 		if ( keyStr.contains( "-----BEGIN" ) ) {
 			boolean isPrivate = keyStr.contains( "PRIVATE" );
 			return parsePemString( keyStr.strip(), isPrivate );
 		}
+		// If the string looks like a JSON object, attempt to parse it as a JWK. This covers both symmetric and asymmetric keys.
 		if ( isHmacAlgorithm( algorithm ) ) {
 			return parseHmacSecret( keyStr, algorithm );
 		}
 		try {
+			// First try parsing as a named key from the registry, which may throw an exception if not found or invalid for the operation.
 			return parseHmacSecret( keyStr, "HS256" );
 		} catch ( Exception e ) {
+			// If parsing as a named key fails, attempt to parse the string as a PEM-encoded key. This allows direct PEM input without needing to reference a
+			// named key.
 			return parsePemString( keyStr.strip(), false );
 		}
 	}
 
+	/**
+	 * --------------------------------------------------------------------------
+	 * JWT Creation + Encryption + Verification + Decryption
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * BIF implementation for JWT encryption. Accepts a payload, encryption key material, and options to produce a JWE string.
+	 *
+	 * @param payload   The claims payload to encrypt, which can be a struct or any value that can be stringified.
+	 * @param key       The encryption key material, which can be a named key, PEM/JWK string, or raw secret. Optional if defaultEncryptionKey is
+	 *                  configured.
+	 * @param algorithm The encryption algorithm to use (e.g., "RSA-OAEP-256", "A256GCM"). Optional if resolved from key metadata or defaults.
+	 * @param options   Additional encryption options such as custom JOSE headers, keyAlgorithm, and encAlgorithm.
+	 *
+	 * @return A compact serialized JWE string containing the encrypted payload.
+	 */
 	public String create( IStruct payload, java.security.Key key, String algorithm, IStruct options ) {
 		try {
 			JWSAlgorithm			alg				= JWSAlgorithm.parse( algorithm );
@@ -299,6 +396,18 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * BIF implementation for JWT verification. Accepts a JWT token, verification key material, algorithm, and options to validate the token and return
+	 * the claims.
+	 *
+	 * @param token     The JWT token to verify.
+	 * @param key       The verification key material, which can be a named key, PEM/JWK string, or raw secret. Optional if defaultVerificationKey is
+	 *                  configured.
+	 * @param algorithm The verification algorithm to use (e.g., "RS256", "HS256"). Optional if resolved from key metadata or defaults.
+	 * @param options   Additional verification options such as custom JOSE headers, leeway, and claim checks.
+	 *
+	 * @return The claims contained in the verified JWT.
+	 */
 	public IStruct verify( String token, java.security.Key key, String algorithm, IStruct options ) {
 		try {
 			JWSAlgorithm	alg			= JWSAlgorithm.parse( algorithm );
@@ -323,6 +432,18 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * BIF implementation for JWT decryption. Accepts a JWE token, decryption key material, and options to return the decrypted payload.
+	 * For structured payloads, this returns a claims struct. For nested JWT scenarios, the returned struct includes
+	 * the nested payload string for follow-up verification.
+	 *
+	 * @param token   The JWE token to decrypt.
+	 * @param key     The decryption key material, which can be a named key, PEM/JWK string, or raw secret. Optional if defaultDecryptionKey is
+	 *                configured.
+	 * @param options Decryption options such as keyAlgorithm and encAlgorithm.
+	 *
+	 * @return The decrypted payload as a struct, or a struct containing the raw payload string for nested JWT scenarios.
+	 */
 	public String encrypt( Object payload, java.security.Key key, IStruct options ) {
 		try {
 			String				keyAlgStr		= getSetting( options, KeyDictionary.keyAlgorithm,
@@ -357,6 +478,18 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * BIF implementation for JWT decryption. Accepts a JWE token, decryption key material, and options to return the decrypted payload.
+	 * For structured payloads, this returns a claims struct. For nested JWT scenarios, the returned struct includes the nested payload string for
+	 * follow-up verification.
+	 *
+	 * @param token   The JWE token to decrypt.
+	 * @param key     The decryption key material, which can be a named key, PEM/JWK string, or raw secret. Optional if defaultDecryptionKey is
+	 *                configured.
+	 * @param options Decryption options such as keyAlgorithm and encAlgorithm.
+	 *
+	 * @return The decrypted payload as a struct, or a struct containing the raw payload string for nested JWT scenarios.
+	 */
 	public IStruct decrypt( String token, java.security.Key key, IStruct options ) {
 		try {
 			String				keyAlgStr	= getSetting( options, KeyDictionary.keyAlgorithm,
@@ -384,6 +517,22 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * --------------------------------------------------------------------------
+	 * Private Helpers
+	 * --------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Creates a JWSSigner based on the provided key and algorithm. Supports RSA, EC, and HMAC keys.
+	 *
+	 * @param key The key to use for signing.
+	 * @param alg The algorithm to use for signing.
+	 *
+	 * @return A JWSSigner instance.
+	 *
+	 * @throws JOSEException If an error occurs while creating the signer.
+	 */
 	private JWSSigner createSigner( java.security.Key key, JWSAlgorithm alg ) throws JOSEException {
 		if ( key instanceof RSAPrivateKey || key instanceof ECPrivateKey ) {
 			if ( alg.toString().startsWith( "ES" ) || alg.toString().equals( "EdDSA" ) ) {
@@ -400,6 +549,18 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Unsupported key type for signing: " + key.getClass().getName() );
 	}
 
+	/**
+	 * BIF implementation for JWT decryption. Accepts a JWE token, decryption key material, and options to return the decrypted payload.
+	 * For structured payloads, this returns a claims struct. For nested JWT scenarios, the returned struct includes the nested payload string for
+	 * follow-up verification.
+	 *
+	 * @param key The key to use for verification.
+	 * @param alg The algorithm to use for verification.
+	 *
+	 * @return A JWSVerifier instance.
+	 *
+	 * @throws JOSEException If an error occurs while creating the verifier.
+	 */
 	private JWSVerifier createVerifier( java.security.Key key, JWSAlgorithm alg ) throws JOSEException {
 		if ( key instanceof RSAPublicKey || key instanceof ECPublicKey ) {
 			if ( alg.toString().startsWith( "ES" ) || alg.toString().equals( "EdDSA" ) ) {
@@ -416,6 +577,17 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Unsupported key type for verification: " + key.getClass().getName() );
 	}
 
+	/**
+	 * Creates a JWEEncrypter based on the provided key, key algorithm, and encryption method. Supports RSA, EC, and symmetric keys.
+	 *
+	 * @param key    The key to use for encryption.
+	 * @param keyAlg The JWE algorithm to use for key management.
+	 * @param encAlg The encryption method to use for content encryption.
+	 *
+	 * @return A JWEEncrypter instance.
+	 *
+	 * @throws JOSEException If an error occurs while creating the encrypter.
+	 */
 	private JWEEncrypter createEncrypter( java.security.Key key, JWEAlgorithm keyAlg, EncryptionMethod encAlg ) throws JOSEException {
 		if ( keyAlg.toString().equals( "dir" ) ) {
 			return new DirectEncrypter( ( SecretKey ) key );
@@ -432,6 +604,17 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Unsupported key type for encryption: " + key.getClass().getName() );
 	}
 
+	/**
+	 * Creates a JWEDecrypter based on the provided key, key algorithm, and encryption method. Supports RSA, EC, and symmetric keys.
+	 *
+	 * @param key    The key to use for decryption.
+	 * @param keyAlg The JWE algorithm to use for key management.
+	 * @param encAlg The encryption method to use for content encryption.
+	 *
+	 * @return A JWEDecrypter instance.
+	 *
+	 * @throws JOSEException If an error occurs while creating the decrypter.
+	 */
 	private JWEDecrypter createDecrypter( java.security.Key key, JWEAlgorithm keyAlg, EncryptionMethod encAlg ) throws JOSEException {
 		if ( keyAlg.toString().equals( "dir" ) ) {
 			return new DirectDecrypter( ( SecretKey ) key );
@@ -448,6 +631,15 @@ public class JWTService extends BaseService {
 		throw new JWTKeyException( "Unsupported key type for decryption: " + key.getClass().getName() );
 	}
 
+	/**
+	 * Builds a JWTClaimsSet.Builder from the provided payload struct and options. Handles claim conversion, automatic iat/jti generation, and other
+	 * claim-related options.
+	 *
+	 * @param payload The payload struct containing claims to include in the JWT.
+	 * @param options Options that may influence claim generation, such as generateIat and generateJti.
+	 *
+	 * @return A JWTClaimsSet.Builder populated with the claims from the payload and any additional generated claims.
+	 */
 	private JWTClaimsSet.Builder buildClaims( IStruct payload, IStruct options ) {
 		JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder();
 		for ( Map.Entry<Key, Object> entry : payload.entrySet() ) {
@@ -476,6 +668,12 @@ public class JWTService extends BaseService {
 		return builder;
 	}
 
+	/**
+	 * Applies custom JOSE header parameters from the options struct to the JWSHeader.Builder.
+	 *
+	 * @param builder The JWSHeader.Builder to apply the headers to.
+	 * @param options The options struct that may contain a "headers" struct with custom header parameters.
+	 */
 	private void applyHeaders( JWSHeader.Builder builder, IStruct options ) {
 		if ( options == null ) {
 			return;
@@ -490,6 +688,12 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Applies custom JOSE header parameters from the options struct to the JWEHeader.Builder.
+	 *
+	 * @param builder The JWEHeader.Builder to apply the headers to.
+	 * @param options The options struct that may contain a "headers" struct with custom header parameters.
+	 */
 	private void applyHeaders( JWEHeader.Builder builder, IStruct options ) {
 		if ( options == null ) {
 			return;
@@ -504,6 +708,14 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Sets a header parameter on the JWSHeader.Builder based on the parameter name. Recognizes standard JOSE header fields and sets them using the
+	 * appropriate builder methods. Unrecognized fields are added as custom parameters.
+	 *
+	 * @param builder The JWSHeader.Builder to set the parameter on.
+	 * @param name    The name of the header parameter.
+	 * @param value   The value of the header parameter.
+	 */
 	private void setHeaderParam( JWSHeader.Builder builder, String name, String value ) {
 		switch ( name ) {
 			case "kid" -> builder.keyID( value );
@@ -513,6 +725,14 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Sets a header parameter on the JWEHeader.Builder based on the parameter name. Recognizes standard JOSE header fields and sets them using the
+	 * appropriate builder methods. Unrecognized fields are added as custom parameters.
+	 *
+	 * @param builder The JWEHeader.Builder to set the parameter on.
+	 * @param name    The name of the header parameter.
+	 * @param value   The value of the header parameter.
+	 */
 	private void setJweHeaderParam( JWEHeader.Builder builder, String name, String value ) {
 		switch ( name ) {
 			case "kid" -> builder.keyID( value );
@@ -522,6 +742,15 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Validates the claims in the JWTClaimsSet against expected values and time-based constraints specified in the options. Checks for claim mismatches,
+	 * expiration, and not-before conditions, applying any configured clock skew.
+	 *
+	 * @param claimsSet The JWTClaimsSet to validate.
+	 * @param options   The options struct that may contain expected claim values under "claims" and clock skew under "clockSkew".
+	 *
+	 * @throws JWTVerificationException If any claim validation fails, including mismatched claims, expired tokens, or tokens not yet valid.
+	 */
 	private void validateClaims( JWTClaimsSet claimsSet, IStruct options ) {
 		Object claimsObj = options != null ? options.get( KeyDictionary.claims ) : null;
 		if ( claimsObj instanceof IStruct claims ) {
@@ -554,6 +783,14 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Converts a JWTClaimsSet to an IStruct, handling the conversion of Date objects to DateTime for better compatibility with BIF usage. This allows the
+	 * claims to be returned in a structured format that can be easily accessed in BIFs while preserving date information.
+	 *
+	 * @param claimsSet The JWTClaimsSet to convert.
+	 *
+	 * @return An IStruct containing the claims from the JWTClaimsSet, with Date fields converted to DateTime.
+	 */
 	private IStruct claimsToStruct( JWTClaimsSet claimsSet ) {
 		IStruct result = new Struct();
 		for ( Map.Entry<String, Object> entry : claimsSet.getClaims().entrySet() ) {
@@ -568,6 +805,16 @@ public class JWTService extends BaseService {
 		return result;
 	}
 
+	/**
+	 * Parses a PEM-encoded key string or file path into a java.security.Key object. Supports both private and public keys.
+	 *
+	 * @param pem       The PEM-encoded key string or file path.
+	 * @param isPrivate Indicates whether the key is a private key.
+	 *
+	 * @return The parsed java.security.Key object.
+	 *
+	 * @throws JWTKeyException If the key cannot be parsed.
+	 */
 	private java.security.Key parsePemKey( String pem, boolean isPrivate ) {
 		try {
 			String pemContent = pem.strip();
@@ -581,6 +828,16 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Parses a PEM-encoded key string into a java.security.Key object. This method is used internally after determining that the input is a PEM string.
+	 *
+	 * @param pem       The PEM-encoded key string.
+	 * @param isPrivate Indicates whether the key is a private key.
+	 *
+	 * @return The parsed java.security.Key object.
+	 *
+	 * @throws JWTKeyException If the key cannot be parsed.
+	 */
 	private java.security.Key parsePemString( String pem, boolean isPrivate ) {
 		try {
 			String		b64		= pem.replaceAll( "-----[A-Z ]+-----", "" ).replaceAll( "\\s", "" );
@@ -618,6 +875,17 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Parses a raw secret string into a SecretKey for HMAC algorithms. The algorithm parameter determines the specific HMAC variant (e.g., HS256, HS384,
+	 * HS512).
+	 *
+	 * @param secret    The raw secret string to parse.
+	 * @param algorithm The HMAC algorithm to use (e.g., "HS256", "HS384", "HS512").
+	 *
+	 * @return A SecretKey object representing the HMAC secret.
+	 *
+	 * @throws JWTKeyException If the secret cannot be parsed or if the algorithm is unsupported.
+	 */
 	private SecretKey parseHmacSecret( String secret, String algorithm ) {
 		try {
 			String hmacAlg = switch ( algorithm ) {
@@ -631,6 +899,16 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Parses a JWK struct into a java.security.Key object. Supports RSA and EC keys, both private and public. The struct should contain the necessary JWK
+	 * parameters for the key type.
+	 *
+	 * @param jwkStruct The struct containing the JWK parameters.
+	 *
+	 * @return The parsed java.security.Key object.
+	 *
+	 * @throws JWTKeyException If the JWK cannot be parsed or if the key type is unsupported.
+	 */
 	private java.security.Key parseJwkStruct( IStruct jwkStruct ) {
 		try {
 			Map<String, Object> map = new java.util.HashMap<>();
@@ -656,6 +934,15 @@ public class JWTService extends BaseService {
 		}
 	}
 
+	/**
+	 * Interpolates environment variables in the input string using the syntax ${env.VAR_NAME}. This allows configuration values to reference environment
+	 * variables
+	 * dynamically. If the input string does not contain any environment variable references, it is returned as-is.
+	 *
+	 * @param value The input string that may contain environment variable references.
+	 *
+	 * @return The input string with environment variables interpolated, or the original string if no interpolation is needed.
+	 */
 	private String interpolateEnvVars( String value ) {
 		if ( value == null || !value.contains( "${" ) ) {
 			return value;
@@ -671,10 +958,30 @@ public class JWTService extends BaseService {
 		return sb.toString();
 	}
 
+	/**
+	 * Determines if the provided algorithm string corresponds to an HMAC algorithm (e.g., HS256, HS384, HS512). This is used to decide how to parse key
+	 * material for
+	 * signing and verification.
+	 *
+	 * @param algorithm The algorithm string to check.
+	 *
+	 * @return True if the algorithm is an HMAC algorithm, false otherwise.
+	 */
 	private boolean isHmacAlgorithm( String algorithm ) {
 		return algorithm != null && ( algorithm.startsWith( "HS" ) );
 	}
 
+	/**
+	 * Retrieves a setting value from the options struct, falling back to a default value if the setting is not present. This is used to determine
+	 * algorithm
+	 * choices and other configurable parameters for encryption and verification.
+	 *
+	 * @param options      The options struct that may contain the setting.
+	 * @param key          The key representing the setting to retrieve.
+	 * @param defaultValue The default value to return if the setting is not present in the options.
+	 *
+	 * @return The setting value from the options, or the default value if not present.
+	 */
 	private String getSetting( IStruct options, Key key, String defaultValue ) {
 		if ( options == null || !options.containsKey( key ) ) {
 			return defaultValue;
@@ -682,6 +989,16 @@ public class JWTService extends BaseService {
 		return StringCaster.cast( options.get( key ) );
 	}
 
+	/**
+	 * Retrieves a default setting value from the module settings, falling back to a provided default if the setting is not configured. This allows for
+	 * module-level
+	 * defaults to be defined for algorithm choices and other parameters, which can be overridden in the options passed to the BIFs.
+	 *
+	 * @param key          The key representing the setting to retrieve.
+	 * @param defaultValue The default value to return if the setting is not present in the module settings.
+	 *
+	 * @return The setting value from the module settings, or the default value if not present.
+	 */
 	private Object getDefaultSetting( Key key, Object defaultValue ) {
 		if ( !runtime.getModuleService().hasModule( KeyDictionary.moduleName ) ) {
 			return defaultValue;
@@ -693,6 +1010,12 @@ public class JWTService extends BaseService {
 		return settings.get( key );
 	}
 
+	/**
+	 * Parses configured keys from the module settings and registers them in the key registry. This allows keys to be defined in the module configuration
+	 * and
+	 * accessed by name in the BIFs. The keys should be defined under the "keys" struct in the module settings, with each entry containing the necessary
+	 * information to parse the key material (e.g., PEM string, JWK struct, or raw secret).
+	 */
 	private void parseConfiguredKeys() {
 		if ( !runtime.getModuleService().hasModule( KeyDictionary.moduleName ) ) {
 			return;
