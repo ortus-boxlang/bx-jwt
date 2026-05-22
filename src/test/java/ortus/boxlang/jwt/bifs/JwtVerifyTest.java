@@ -118,6 +118,71 @@ public class JwtVerifyTest extends BaseIntegrationTest {
 		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "missing-key" );
 	}
 
+	@DisplayName( "aud claim as string is validated correctly" )
+	@Test
+	public void testAudClaimString() {
+		runtime.executeSource(
+		    """
+		    secret  = "12345678901234567890123456789012";
+		    token   = jwtCreate( { sub: "user", aud: "api" }, secret, "HS256" );
+		    payload = jwtVerify( token, secret, "HS256", { claims: { aud: "api" } } );
+		    result  = payload.sub;
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "user" );
+	}
+
+	@DisplayName( "aud claim as array member is validated correctly" )
+	@Test
+	public void testAudClaimArray() {
+		runtime.executeSource(
+		    """
+		    secret  = "12345678901234567890123456789012";
+		    token   = jwtCreate( { sub: "user", aud: [ "api", "mobile" ] }, secret, "HS256" );
+		    payload = jwtVerify( token, secret, "HS256", { claims: { aud: "mobile" } } );
+		    result  = payload.sub;
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "user" );
+	}
+
+	@DisplayName( "aud claim mismatch throws JWTVerificationException" )
+	@Test
+	public void testAudClaimMismatch() {
+		runtime.executeSource(
+		    """
+		    secret = "12345678901234567890123456789012";
+		    token  = jwtCreate( { sub: "user", aud: "api" }, secret, "HS256" );
+		    result = "";
+		    try {
+		        jwtVerify( token, secret, "HS256", { claims: { aud: "wrong" } } );
+		        result = "no-error";
+		    } catch ( "bxjwt.JWTVerificationException" e ) {
+		        result = "aud-mismatch";
+		    }
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "aud-mismatch" );
+	}
+
+	@DisplayName( "Date claims are returned in UTC" )
+	@Test
+	public void testDateClaimsReturnedInUtc() {
+		runtime.executeSource(
+		    """
+		    secret  = "12345678901234567890123456789012";
+		    token   = jwtCreate( { sub: "user" }, secret, "HS256" );
+		    payload = jwtVerify( token, secret, "HS256" );
+		    result  = payload.iat.getTimezone();
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "UTC" );
+	}
+
 	@DisplayName( "nbf in the past is accepted" )
 	@Test
 	public void testNbfInPastIsAccepted() {

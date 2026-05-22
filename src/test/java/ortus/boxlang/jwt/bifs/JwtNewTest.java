@@ -71,4 +71,21 @@ public class JwtNewTest extends BaseIntegrationTest {
 		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "builderObject" );
 	}
 
+	@DisplayName( "jwtNew withPayload sets entire struct payload" )
+	@Test
+	public void testJwtNewWithPayload() {
+		runtime.executeSource(
+		    """
+		    secret  = "12345678901234567890123456789012";
+		    token   = jwtNew()
+		        .withPayload( { sub: "payloadUser", iss: "myapp", role: "admin" } )
+		        .sign( secret, "HS256" );
+		    payload = jwtVerify( token, secret, "HS256" );
+		    result  = payload.sub & ":" & payload.role;
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "payloadUser:admin" );
+	}
+
 }
