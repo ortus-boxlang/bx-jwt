@@ -92,19 +92,24 @@ public class JWTService extends BaseService {
 	 * --------------------------------------------------------------------------
 	 */
 
-	private ConcurrentHashMap<String, JWTKeyEntry>	keyRegistry		= new ConcurrentHashMap<>();
+	private ConcurrentHashMap<String, JWTKeyEntry>	keyRegistry			= new ConcurrentHashMap<>();
 
 	/**
 	 * Module settings are accessed frequently for defaults, so we cache them in a static struct for quick access.
 	 */
-	private static final IStruct					MODULE_SETTINGS	= BoxRuntime.getInstance()
+	private static final IStruct					MODULE_SETTINGS		= BoxRuntime.getInstance()
 	    .getModuleService()
 	    .getModuleSettings( KeyDictionary.moduleName );
 
 	/**
 	 * Logger instance for the JWTService class. Used for logging key registration, JWT operations, and error conditions.
 	 */
-	private static final BoxLangLogger				logger			= BoxRuntime.getInstance().getLoggingService().APPLICATION_LOGGER;
+	private static final BoxLangLogger				logger				= BoxRuntime.getInstance().getLoggingService().APPLICATION_LOGGER;
+
+	/**
+	 * Default clock skew in seconds for validating time-based claims (exp, nbf) when no specific skew is provided in options or module settings.
+	 */
+	private static final long						DEFAULT_CLOCK_SKEW	= 60L;
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -831,7 +836,7 @@ public class JWTService extends BaseService {
 			clockSkewSeconds = LongCaster.cast( options.get( KeyDictionary.clockSkew ) );
 		} else {
 			// Use the module default
-			clockSkewSeconds = LongCaster.cast( getDefaultSetting( KeyDictionary.clockSkew, 0L ) );
+			clockSkewSeconds = LongCaster.cast( getDefaultSetting( KeyDictionary.clockSkew, DEFAULT_CLOCK_SKEW ) );
 		}
 
 		Date	now	= new Date( System.currentTimeMillis() - clockSkewSeconds * 1000 );
