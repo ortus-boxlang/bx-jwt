@@ -384,14 +384,10 @@ public class JWTService extends BaseService {
 		if ( isHmacAlgorithm( algorithm ) ) {
 			return parseHmacSecret( keyStr, algorithm );
 		}
-		try {
-			// First try parsing as a named key from the registry, which may throw an exception if not found or invalid for the operation.
-			return parseHmacSecret( keyStr, "HS256" );
-		} catch ( Exception e ) {
-			// If parsing as a named key fails, attempt to parse the string as a PEM-encoded key. This allows direct PEM input without needing to reference a
-			// named key.
-			return parsePemString( keyStr.strip(), false );
-		}
+		// Non-HMAC algorithm with a plain string key — treat as an HMAC secret anyway since
+		// parseHmacSecret never throws. The Nimbus signer/verifier will reject the key type
+		// mismatch with a clear JOSEException if the algorithm is truly asymmetric.
+		return parseHmacSecret( keyStr, "HS256" );
 	}
 
 	/**
@@ -821,12 +817,21 @@ public class JWTService extends BaseService {
 			for ( Map.Entry<Key, Object> entry : claims.entrySet() ) {
 				String	claimName	= entry.getKey().getName();
 				String	expected	= StringCaster.cast( entry.getValue() );
-				Object	actual		= claimsSet.getClaim( claimName );
-				// Verify we have a match
-				if ( expected != null && !expected.equals( actual ) ) {
-					throw new JWTVerificationException(
-					    "Claim \"" + claimName + "\" mismatch: expected \"" + expected + "\", got \"" + actual
-					        + "\"" );
+				// aud is always a List<String> in Nimbus regardless of how it was encoded,
+				// so check membership rather than equality.
+				if ( claimName.equals( "aud" ) ) {
+					java.util.List<String> audList = claimsSet.getAudience();
+					if ( audList == null || !audList.contains( expected ) ) {
+						throw new JWTVerificationException(
+						    "Claim \"aud\" mismatch: expected \"" + expected + "\", got \"" + audList + "\"" );
+					}
+				} else {
+					Object actual = claimsSet.getClaim( claimName );
+					if ( expected != null && !expected.equals( StringCaster.cast( actual ) ) ) {
+						throw new JWTVerificationException(
+						    "Claim \"" + claimName + "\" mismatch: expected \"" + expected + "\", got \"" + actual
+						        + "\"" );
+					}
 				}
 			}
 		}
@@ -874,7 +879,7 @@ public class JWTService extends BaseService {
 			String	key	= entry.getKey();
 			Object	val	= entry.getValue();
 			if ( val instanceof Date date ) {
-				result.put( Key.of( key ), new DateTime( date, ZoneId.systemDefault() ) );
+				result.put( Key.of( key ), new DateTime( date, ZoneId.of( "UTC" ) ) );
 			} else {
 				result.put( Key.of( key ), val );
 			}

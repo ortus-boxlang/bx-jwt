@@ -1,121 +1,149 @@
 /**
+ * [BoxLang]
+ *
+ * Copyright [2026] [Ortus Solutions, Corp]
+ *
+ * Licensed under the BoxLang Plus Subscription License.
+ * ----------------------------------------------------------------------------------
  * Fluent builder for creating signed (JWS) and encrypted (JWE) JWTs.
  * Returned by jwtNew(). Terminates with .sign() or .encrypt().
  */
 class {
 
-	property name="payload";
-	property name="headers";
+	property name="payload" type="struct";
+	property name="headers" type="struct";
 	property name="service";
 
 	/**
 	 * Constructor. Receives the JWTService instance from jwtNew().
+	 *
+	 * @service The JWTService instance, used for signing/encryption operations and defaults.
 	 */
 	function init( required service ){
-		this.payload = {};
-		this.headers = {};
-		this.service = arguments.service;
-		return this;
+		variables.payload = {}
+		variables.headers = {}
+		variables.service = arguments.service
+		return this
 	}
 
 	/**
 	 * Sets the subject (sub) claim.
+	 *
+	 * @val The subject value.
 	 */
 	function subject( required val ){
-		this.payload.sub = arguments.val;
-		return this;
+		variables.payload.sub = arguments.val
+		return this
 	}
 
 	/**
 	 * Sets the issuer (iss) claim.
+	 *
+	 * @val The issuer value.
 	 */
 	function issuer( required val ){
-		this.payload.iss = arguments.val;
-		return this;
+		variables.payload.iss = arguments.val
+		return this
 	}
 
 	/**
 	 * Sets the audience (aud) claim. Accepts string or array.
+	 *
+	 * @val The audience value, either a string or an array of strings.
 	 */
 	function audience( required val ){
-		this.payload.aud = arguments.val;
-		return this;
+		variables.payload.aud = arguments.val
+		return this
 	}
 
 	/**
 	 * Sets a custom claim.
+	 *
+	 * @key The claim name.
+	 * @val The claim value.
 	 */
 	function claim( required key, required val ){
-		this.payload[ arguments.key ] = arguments.val;
-		return this;
+		variables.payload[ arguments.key ] = arguments.val
+		return this
 	}
 
 	/**
-	 * Sets the entire payload at once (struct or string).
+	 * Sets the entire payload at once from a struct.
+	 *
+	 * @val The claims struct to use as the payload.
 	 */
-	function payload( required val ){
-		if ( isStruct( arguments.val ) ) {
-			this.payload = arguments.val;
-		} else {
-			this._stringPayload = arguments.val;
-		}
-		return this;
+	function withPayload( required struct val ){
+		variables.payload = arguments.val
+		return this
 	}
 
 	/**
 	 * Sets the expiration (exp) claim as now + seconds.
+	 *
+	 * @seconds Number of seconds until expiration from now.
 	 */
 	function expireIn( required seconds ){
-		this.payload.exp = dateAdd( "s", arguments.seconds, now() );
-		return this;
+		variables.payload.exp = dateAdd( "s", arguments.seconds, now() )
+		return this
 	}
 
 	/**
 	 * Sets the expiration (exp) claim as an explicit DateTime.
+	 *
+	 * @date The expiration date as a DateTime or Date struct.
 	 */
 	function expireAt( required date ){
-		this.payload.exp = arguments.date;
-		return this;
+		variables.payload.exp = arguments.date
+		return this
 	}
 
 	/**
 	 * Sets the issued-at (iat) claim to now.
 	 */
 	function issuedNow(){
-		this.payload.iat = now();
-		return this;
+		variables.payload.iat = now()
+		return this
 	}
 
 	/**
 	 * Sets the issued-at (iat) claim to an explicit DateTime.
+	 *
+	 * @date The issued-at date as a DateTime or Date struct.
 	 */
 	function issuedAt( required date ){
-		this.payload.iat = arguments.date;
-		return this;
+		variables.payload.iat = arguments.date
+		return this
 	}
 
 	/**
 	 * Sets the not-before (nbf) claim.
+	 *
+	 * @date The not-before date as a DateTime or Date struct.
 	 */
 	function notBefore( required date ){
-		this.payload.nbf = arguments.date;
-		return this;
+		variables.payload.nbf = arguments.date
+		return this
 	}
 
 	/**
 	 * Sets the JWT ID (jti) claim.
+	 *
+	 * @val The JWT ID value.
 	 */
 	function jti( required val ){
-		this.payload.jti = arguments.val;
-		return this;
+		variables.payload.jti = arguments.val
+		return this
 	}
 
 	/**
 	 * Sets a custom header field.
+	 *
+	 * @key The header name.
+	 * @val The header value.
 	 */
 	function header( required key, required val ){
-		this.headers[ arguments.key ] = arguments.val;
-		return this;
+		variables.headers[ arguments.key ] = arguments.val
+		return this
 	}
 
 	/**
@@ -125,12 +153,16 @@ class {
 	 * @algorithm JWS algorithm (HS256, RS256, etc). Optional.
 	 */
 	function sign( key, algorithm ){
-		var payloadToUse = isNull( this._stringPayload ) ? this.payload : this._stringPayload;
-		var args = { payload : payloadToUse, key : arguments.key, options : { headers : this.headers } };
-		if ( !isNull( arguments.algorithm ) ) {
-			args.algorithm = arguments.algorithm;
+		var args = {
+			payload : variables.payload,
+			key : arguments.key,
+			options : { headers : variables.headers }
 		}
-		return jwtCreate( argumentCollection = args );
+		if ( !isNull( arguments.algorithm ) && !arguments.algorithm.isEmpty() ) {
+			args.algorithm = arguments.algorithm
+		}
+
+		return jwtCreate( argumentCollection = args )
 	}
 
 	/**
@@ -141,15 +173,20 @@ class {
 	 * @encAlgorithm  JWE content encryption algorithm. Optional.
 	 */
 	function encrypt( key, keyAlgorithm, encAlgorithm ){
-		var payloadToUse = isNull( this._stringPayload ) ? this.payload : this._stringPayload;
-		var args = { payload : payloadToUse, key : arguments.key, options : { headers : this.headers } };
-		if ( !isNull( arguments.keyAlgorithm ) ) {
-			args.options.keyAlgorithm = arguments.keyAlgorithm;
+		var args = {
+			payload : variables.payload,
+			key : arguments.key,
+			options : { headers : variables.headers }
 		}
+
+		if ( !isNull( arguments.keyAlgorithm ) && !arguments.keyAlgorithm.isEmpty() ) {
+			args.options.keyAlgorithm = arguments.keyAlgorithm
+		}
+
 		if ( !isNull( arguments.encAlgorithm ) ) {
-			args.options.encAlgorithm = arguments.encAlgorithm;
+			args.options.encAlgorithm = arguments.encAlgorithm
 		}
-		return jwtEncrypt( argumentCollection = args );
+		return jwtEncrypt( argumentCollection = args )
 	}
 
 }
