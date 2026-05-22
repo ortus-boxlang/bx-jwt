@@ -118,4 +118,76 @@ public class JwtVerifyTest extends BaseIntegrationTest {
 		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "missing-key" );
 	}
 
+	@DisplayName( "nbf in the past is accepted" )
+	@Test
+	public void testNbfInPastIsAccepted() {
+		runtime.executeSource(
+		    """
+		    secret = "12345678901234567890123456789012";
+		    token = jwtCreate(
+		        { sub: "nbfUser", nbf: dateAdd( "s", -30, now() ) },
+		        secret,
+		        "HS256",
+		        { generateIat: false }
+		    );
+		    payload = jwtVerify( token, secret, "HS256", { clockSkew: 0 } );
+		    result = payload.sub;
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "nbfUser" );
+	}
+
+	@DisplayName( "nbf too far in future throws JWTNotYetValidException" )
+	@Test
+	public void testNbfFutureThrowsException() {
+		runtime.executeSource(
+		    """
+		    secret = "12345678901234567890123456789012";
+		    result = "";
+		    try {
+		        token = jwtCreate(
+		            { sub: "nbfUser", nbf: dateAdd( "s", 120, now() ) },
+		            secret,
+		            "HS256",
+		            { generateIat: false }
+		        );
+		        jwtVerify( token, secret, "HS256", { clockSkew: 60 } );
+		        result = "no-error";
+		    } catch ( "bxjwt.JWTNotYetValidException" e ) {
+		        result = "not-yet-valid";
+		    }
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "not-yet-valid" );
+	}
+
+	@DisplayName( "nbf within clock skew window is accepted" )
+	@Test
+	public void testNbfWithinClockSkewIsAccepted() {
+		// Token becomes valid in 30 seconds, but our clock skew is 60 seconds.
+		// The issuer's clock may be 30 seconds ahead of ours, so we accept it.
+		runtime.executeSource(
+		    """
+		    secret = "12345678901234567890123456789012";
+		    result = "";
+		    try {
+		        token = jwtCreate(
+		            { sub: "nbfUser", nbf: dateAdd( "s", 30, now() ) },
+		            secret,
+		            "HS256",
+		            { generateIat: false }
+		        );
+		        payload = jwtVerify( token, secret, "HS256", { clockSkew: 60 } );
+		        result = payload.sub;
+		    } catch ( "bxjwt.JWTNotYetValidException" e ) {
+		        result = "not-yet-valid";
+		    }
+		    """,
+		    context
+		);
+		assertThat( ( String ) variables.get( "result" ) ).isEqualTo( "nbfUser" );
+	}
+
 }
