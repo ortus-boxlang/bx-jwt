@@ -74,6 +74,7 @@ import ortus.boxlang.jwt.models.JWTKeyEntry;
 import ortus.boxlang.jwt.util.KeyDictionary;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.config.util.PlaceholderHelper;
+import ortus.boxlang.runtime.dynamic.casters.BooleanCaster;
 import ortus.boxlang.runtime.dynamic.casters.LongCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
@@ -418,7 +419,9 @@ public class JWTService extends BaseService {
 			// Build the appropriate claims requested in the payload, and apply any custom headers from options.
 			// The service method handles the actual signing and serialization of the JWT.
 			JWTClaimsSet.Builder	claimsBuilder	= buildClaims( payload, options );
+			// Build the header now for the JWT
 			JWSHeader.Builder		headerBuilder	= new JWSHeader.Builder( alg );
+			// Apply any custom headers from options to the header builder. This allows users to include additional JOSE headers as needed.
 			applyHeaders( headerBuilder, options );
 			SignedJWT signedJWT = new SignedJWT( headerBuilder.build(), claimsBuilder.build() );
 			signedJWT.sign( signer );
@@ -701,6 +704,9 @@ public class JWTService extends BaseService {
 	 */
 	private JWTClaimsSet.Builder buildClaims( IStruct payload, IStruct options ) {
 		JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder();
+
+		// Iterate over the payload struct and add each entry as a claim in the JWTClaimsSet.Builder.
+		// If a value is a DateTime, we convert it to a java.util.Date for compatibility with the JWTClaimsSet.Builder.
 		for ( Map.Entry<Key, Object> entry : payload.entrySet() ) {
 			Object value = entry.getValue();
 			if ( value instanceof DateTime dt ) {
@@ -708,22 +714,25 @@ public class JWTService extends BaseService {
 			}
 			builder.claim( entry.getKey().getName(), value );
 		}
-		boolean	generateIat			= options != null && options.containsKey( KeyDictionary.generateIat )
-		    && Boolean.TRUE.equals( options.get( KeyDictionary.generateIat ) );
-		boolean	generateJti			= options != null && options.containsKey( KeyDictionary.generateJti )
-		    && Boolean.TRUE.equals( options.get( KeyDictionary.generateJti ) );
 
-		boolean	defaultGenerateIat	= Boolean.TRUE.equals( getDefaultSetting( KeyDictionary.generateIat, true ) );
-		boolean	defaultGenerateJti	= Boolean.TRUE.equals( getDefaultSetting( KeyDictionary.generateJti, false ) );
+		// Default Generation Options from Config
+		boolean	defaultGenerateIat	= BooleanCaster.cast( getDefaultSetting( KeyDictionary.generateIat, true ) );
+		boolean	defaultGenerateJti	= BooleanCaster.cast( getDefaultSetting( KeyDictionary.generateJti, true ) );
+		// Get generation options from incoming struct, or defaults.
+		boolean	generateIat			= options.containsKey( KeyDictionary.generateIat )
+		    ? BooleanCaster.cast( options.get( KeyDictionary.generateIat ) )
+		    : defaultGenerateIat;
+		boolean	generateJti			= options.containsKey( KeyDictionary.generateJti )
+		    ? BooleanCaster.cast( options.get( KeyDictionary.generateJti ) )
+		    : defaultGenerateJti;
 
-		if ( generateIat
-		    || ( options != null && !options.containsKey( KeyDictionary.generateIat ) && defaultGenerateIat ) ) {
+		if ( generateIat && !payload.containsKey( KeyDictionary.iat ) ) {
 			builder.issueTime( new Date() );
 		}
-		if ( generateJti
-		    || ( options != null && !options.containsKey( KeyDictionary.generateJti ) && defaultGenerateJti ) ) {
+		if ( generateJti && !payload.containsKey( KeyDictionary.jti ) ) {
 			builder.jwtID( UUID.randomUUID().toString() );
 		}
+
 		return builder;
 	}
 
