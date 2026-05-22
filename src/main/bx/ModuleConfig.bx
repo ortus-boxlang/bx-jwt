@@ -82,7 +82,13 @@ class {
 		 * Every module has a settings configuration object
 		 */
 		settings = {
+
+			// --------------------------------------------------------------------------
+			// Key Registry
+			// --------------------------------------------------------------------------
+
 			// Named key registry - parsed at module startup
+			// This is where you can define your JWT keys and their properties, and then reference them by name when signing/verifying/encrypting/decrypting JWTs
 			keys : {
 				// "myapp-hmac" : {
 				// 	algorithm : "HS256",
@@ -103,19 +109,49 @@ class {
 				// }
 			},
 
-			// Default key names (empty string = no default)
-			defaultSigningKey    : "",
-			defaultVerifyKey     : "",
-			defaultEncryptionKey : "",
-			defaultDecryptionKey : "",
+			// --------------------------------------------------------------------------
+			// JWT Signature Settings Defaults
+			// --------------------------------------------------------------------------
 
-			// JWT behavior defaults
+			// The default key to use when signing JWTs when not explicitly specified in the API.
+			// This can be the same as the verify key if using a symmetric algorithm, or a different key if using an asymmetric algorithm
+			defaultSigningKey    : "",
+			// The default key to use when verifying JWTs when not explicitly specified in the API.
+			// This can be the same as the signing key if using a symmetric algorithm, or a different key if using an asymmetric algorithm
+			defaultVerifyKey     : "",
+			// The default signing algorithm to use when signing JWTs when not explicitly specified in the API.
+			// This can be overridden by the key configuration if the key specifies an algorithm, or by the API call if the algorithm is explicitly specified there.
 			defaultAlgorithm     : "HS256",
+
+			// --------------------------------------------------------------------------
+			// JWT Encryption Settings Defaults
+			// --------------------------------------------------------------------------
+
+			// The default key to use when encrypting JWTs when not explicitly specified in the API.
+			// This can be the same as the decryption key if using a symmetric algorithm, or a different key if using an asymmetric algorithm
+			defaultEncryptionKey : "",
+			// The default key to use when decrypting JWTs when not explicitly specified in the API.
+			// This can be the same as the encryption key if using a symmetric algorithm, or a different key if using an asymmetric algorithm
+			defaultDecryptionKey : "",
+			// The default key encryption algorithm to use when encrypting JWTs when not explicitly specified in the API.
+			// This can be overridden by the key configuration if the key specifies an algorithm, or by the API call if the algorithm is explicitly specified there.
 			defaultKeyAlgorithm  : "RSA-OAEP-256",
+			// The default content encryption algorithm to use when encrypting JWTs when not explicitly specified in the API.
+			// This can be overridden by the key configuration if the key specifies an algorithm, or by the API call if the algorithm is explicitly specified there.
 			defaultEncAlgorithm  : "A256GCM",
+
+			// --------------------------------------------------------------------------
+			// JWT behavior defaults
+			// --------------------------------------------------------------------------
+
+			// Whether to automatically generate the "iat" claim when signing JWTs if not explicitly provided in the payload
+			// The issue time claim is used to determine the age of the token and can be used for token expiration and other time-based validations, so it is recommended to leave this enabled unless you have a specific reason to disable it
 			generateIat          : true,
-			generateJti          : false,
-			clockSkew            : 0
+			// Whether to automatically generate the "jti" claim when signing JWTs if not explicitly provided in the payload
+			// This claim is used for token revocation and blacklisting, so it is recommended to leave this enabled unless you have a specific reason to disable it
+			generateJti          : true,
+			// The allowed clock skew in seconds when validating the "exp", "nbf", and "iat" claims of JWTs.
+			clockSkew            : 60
 		}
 
 		/**
