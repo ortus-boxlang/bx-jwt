@@ -13,6 +13,7 @@
  */
 package ortus.boxlang.jwt.services;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyFactory;
@@ -961,7 +962,7 @@ public class JWTService extends BaseService {
 				case "HS512" -> "HmacSHA512";
 				default -> "HmacSHA256";
 			};
-			return new SecretKeySpec( secret.getBytes(), hmacAlg );
+			return new SecretKeySpec( secret.getBytes( StandardCharsets.UTF_8 ), hmacAlg );
 		} catch ( Exception e ) {
 			throw new JWTKeyException( "Failed to create HMAC key: " + e.getMessage(), e );
 		}
