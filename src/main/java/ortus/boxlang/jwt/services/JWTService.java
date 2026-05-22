@@ -587,11 +587,11 @@ public class JWTService extends BaseService {
 	 * @throws JOSEException If an error occurs while creating the signer.
 	 */
 	private JWSSigner createSigner( java.security.Key key, JWSAlgorithm alg ) throws JOSEException {
-		if ( key instanceof RSAPrivateKey || key instanceof ECPrivateKey ) {
-			if ( alg.toString().startsWith( "ES" ) || alg.toString().equals( "EdDSA" ) ) {
-				return new ECDSASigner( ( ECPrivateKey ) key );
-			}
-			return new RSASSASigner( ( PrivateKey ) key );
+		if ( key instanceof ECPrivateKey ecKey ) {
+			return new ECDSASigner( ecKey );
+		}
+		if ( key instanceof RSAPrivateKey rsaKey ) {
+			return new RSASSASigner( rsaKey );
 		}
 		if ( key instanceof SecretKey sk ) {
 			return new MACSigner( sk );
@@ -614,28 +614,18 @@ public class JWTService extends BaseService {
 	 */
 	private JWSVerifier createVerifier( java.security.Key key, JWSAlgorithm alg ) throws JOSEException {
 
-		// For EC algorithms (ES256, ES384, ES512) and EdDSA, we require an ECPublicKey for verification.
-		// For RSA algorithms (RS256, RS384, RS512), we require an RSAPublicKey. For HMAC algorithms (HS256, HS384, HS512), we
-		if ( key instanceof RSAPublicKey || key instanceof ECPublicKey ) {
-			if ( alg.toString().startsWith( "ES" ) || alg.toString().equals( "EdDSA" ) ) {
-				return new ECDSAVerifier( ( ECPublicKey ) key );
-			}
-			return new RSASSAVerifier( ( RSAPublicKey ) key );
+		if ( key instanceof ECPublicKey ecKey ) {
+			return new ECDSAVerifier( ecKey );
 		}
-
-		// If the key is a SecretKey, we assume it's for HMAC verification. This allows symmetric keys to be used for both signing and verification.
+		if ( key instanceof RSAPublicKey rsaKey ) {
+			return new RSASSAVerifier( rsaKey );
+		}
 		if ( key instanceof SecretKey sk ) {
 			return new MACVerifier( sk );
 		}
-
-		// If the key is a PublicKey but not specifically an RSAPublicKey or ECPublicKey, we attempt to use it as an RSA public key for verification. This
-		// allows for more flexible
 		if ( key instanceof PublicKey pk ) {
 			return new RSASSAVerifier( ( RSAPublicKey ) pk );
 		}
-
-		// If the key type is not supported for verification, we throw an exception. This ensures that we only attempt to verify with compatible key types and
-		// algorithms.
 		throw new JWTKeyException( "Unsupported key type for verification: " + key.getClass().getName() );
 	}
 
