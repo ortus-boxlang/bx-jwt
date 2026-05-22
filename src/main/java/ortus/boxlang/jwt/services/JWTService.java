@@ -17,12 +17,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.ECGenParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.ZoneId;
@@ -408,6 +411,7 @@ public class JWTService extends BaseService {
 	 * @return A compact serialized JWE string containing the encrypted payload.
 	 */
 	public String create( IStruct payload, java.security.Key key, String algorithm, IStruct options ) {
+		validateAlgorithm( algorithm );
 		try {
 			// Parse the algorithm accordingly and create the signer.
 			JWSAlgorithm			alg				= JWSAlgorithm.parse( algorithm );
@@ -447,6 +451,7 @@ public class JWTService extends BaseService {
 	 * @return The claims contained in the verified JWT.
 	 */
 	public IStruct verify( String token, java.security.Key key, String algorithm, IStruct options ) {
+		validateAlgorithm( algorithm );
 		try {
 			// Algorithm resolution is handled in the resolveAlgorithm method, which considers the explicit argument, key metadata, and defaults.
 			JWSAlgorithm	alg			= JWSAlgorithm.parse( algorithm );
@@ -563,6 +568,224 @@ public class JWTService extends BaseService {
 			throw new JWTEncryptionException( "Failed to decrypt: " + e.getMessage(), e );
 		} catch ( Exception e ) {
 			throw new JWTParseException( "Failed to parse JWE: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Decodes a signed JWT (JWS) without verifying the signature.
+	 * Useful for inspecting the token header (e.g., {@code kid}, {@code alg}) before
+	 * deciding which key to use for verification.
+	 *
+	 * @param token The compact serialized JWT string.
+	 *
+	 * @throws JWTParseException if the token cannot be parsed as a valid JWS structure.
+	 *
+	 * @return A struct with two keys: {@code header} (JOSE header fields) and {@code payload} (JWT claims).
+	 */
+	public IStruct decode( String token ) {
+		try {
+			SignedJWT	jwt				= SignedJWT.parse( token );
+			JWSHeader	h				= jwt.getHeader();
+			IStruct		headerStruct	= new Struct();
+			headerStruct.put( Key.of( "alg" ), h.getAlgorithm().getName() );
+			if ( h.getType() != null ) {
+				headerStruct.put( Key.of( "typ" ), h.getType().getType() );
+			}
+			if ( h.getKeyID() != null ) {
+				headerStruct.put( Key.of( "kid" ), h.getKeyID() );
+			}
+			if ( h.getContentType() != null ) {
+				headerStruct.put( Key.of( "cty" ), h.getContentType() );
+			}
+			for ( Map.Entry<String, Object> entry : h.getCustomParams().entrySet() ) {
+				headerStruct.put( Key.of( entry.getKey() ), entry.getValue() );
+			}
+			IStruct result = new Struct();
+			result.put( KeyDictionary.header, headerStruct );
+			result.put( KeyDictionary.payload, claimsToStruct( jwt.getJWTClaimsSet() ) );
+			return result;
+		} catch ( JWTParseException e ) {
+			throw e;
+		} catch ( Exception e ) {
+			throw new JWTParseException( "Failed to decode JWT: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Generates a cryptographically random secret key suitable for HMAC algorithms.
+	 * The returned value is Base64-encoded and can be used directly as an HMAC secret.
+	 *
+	 * @param bits The key length in bits. Must be a multiple of 8 and at least 128. Use 256 for HS256, 384 for HS384, 512 for HS512.
+	 *
+	 * @throws JWTKeyException if {@code bits} is below 128 or not a multiple of 8.
+	 *
+	 * @return A Base64-encoded random secret string of the requested length.
+	 */
+	public String generateSecret( int bits ) {
+		if ( bits < 128 ) {
+			throw new JWTKeyException( "Secret key bits must be at least 128; got " + bits );
+		}
+		if ( bits % 8 != 0 ) {
+			throw new JWTKeyException( "Secret key bits must be a multiple of 8; got " + bits );
+		}
+		byte[] bytes = new byte[ bits / 8 ];
+		new SecureRandom().nextBytes( bytes );
+		return Base64.getEncoder().encodeToString( bytes );
+	}
+
+	/**
+	 * Generates an asymmetric key pair suitable for the specified JWS algorithm and returns
+	 * both keys as PKCS8/X.509 PEM strings.
+	 *
+	 * <ul>
+	 * <li>RS256 / RS384 → 2048-bit RSA</li>
+	 * <li>RS512 → 4096-bit RSA</li>
+	 * <li>ES256 → P-256 (secp256r1)</li>
+	 * <li>ES384 → P-384 (secp384r1)</li>
+	 * <li>ES512 → P-521 (secp521r1)</li>
+	 * </ul>
+	 *
+	 * @param algorithm The JWS algorithm name (e.g., {@code RS256}, {@code ES256}).
+	 *
+	 * @throws JWTKeyException if the algorithm is not an RSA or EC algorithm.
+	 *
+	 * @return A struct with {@code privateKey} and {@code publicKey} PEM strings.
+	 */
+	public IStruct generateKeyPair( String algorithm ) {
+		try {
+			java.security.KeyPair pair;
+			if ( algorithm.startsWith( "RS" ) ) {
+				int				keySize	= algorithm.equals( "RS512" ) ? 4096 : 2048;
+				KeyPairGenerator	kpg		= KeyPairGenerator.getInstance( "RSA" );
+				kpg.initialize( keySize, new SecureRandom() );
+				pair = kpg.generateKeyPair();
+			} else if ( algorithm.startsWith( "ES" ) ) {
+				String curveName = switch ( algorithm ) {
+					case "ES256" -> "secp256r1";
+					case "ES384" -> "secp384r1";
+					case "ES512" -> "secp521r1";
+					default -> throw new JWTKeyException( "Unsupported EC algorithm: " + algorithm );
+				};
+				KeyPairGenerator kpg = KeyPairGenerator.getInstance( "EC" );
+				kpg.initialize( new ECGenParameterSpec( curveName ), new SecureRandom() );
+				pair = kpg.generateKeyPair();
+			} else {
+				throw new JWTKeyException( "generateKeyPair supports RSA (RS256/384/512) and EC (ES256/384/512); got: " + algorithm );
+			}
+
+			Base64.Encoder	mime		= Base64.getMimeEncoder( 64, new byte[] { '\n' } );
+			String			privatePem	= "-----BEGIN PRIVATE KEY-----\n"
+			    + mime.encodeToString( pair.getPrivate().getEncoded() )
+			    + "\n-----END PRIVATE KEY-----";
+			String			publicPem	= "-----BEGIN PUBLIC KEY-----\n"
+			    + mime.encodeToString( pair.getPublic().getEncoded() )
+			    + "\n-----END PUBLIC KEY-----";
+
+			IStruct result = new Struct();
+			result.put( KeyDictionary.privateKey, privatePem );
+			result.put( KeyDictionary.publicKey, publicPem );
+			return result;
+		} catch ( JWTKeyException e ) {
+			throw e;
+		} catch ( Exception e ) {
+			throw new JWTKeyException( "Failed to generate key pair: " + e.getMessage(), e );
+		}
+	}
+
+	/**
+	 * Refreshes a signed JWT by verifying it, stripping time-sensitive claims ({@code iat}, {@code jti},
+	 * {@code exp}, {@code nbf}), and re-signing with a new issue time and JWT ID.
+	 *
+	 * <p>
+	 * By default the existing token must not be expired. Set {@code options.allowExpired = true} to allow
+	 * refreshing tokens that have already expired (the signature is still verified).
+	 * </p>
+	 *
+	 * <p>
+	 * If {@code options.expireIn} (seconds) is provided the refreshed token will carry a new {@code exp} claim.
+	 * Otherwise the module's {@code defaultExpiration} setting is used (0 = no expiration).
+	 * </p>
+	 *
+	 * @param token      The existing compact JWT string.
+	 * @param signingKey The key used to sign the refreshed token.
+	 * @param verifyKey  The key used to verify the original token's signature.
+	 * @param algorithm  The JWS algorithm.
+	 * @param options    Optional options: {@code allowExpired}, {@code expireIn}, {@code headers}.
+	 *
+	 * @throws JWTVerificationException if signature verification fails.
+	 * @throws JWTExpiredException      if the token is expired and {@code allowExpired} is not set.
+	 *
+	 * @return A new compact JWT string containing the refreshed claims.
+	 */
+	public String refresh( String token, java.security.Key signingKey, java.security.Key verifyKey, String algorithm, IStruct options ) {
+		validateAlgorithm( algorithm );
+		try {
+			JWSAlgorithm	alg			= JWSAlgorithm.parse( algorithm );
+			SignedJWT		signedJWT	= SignedJWT.parse( token );
+			JWSVerifier		verifier	= createVerifier( verifyKey, alg );
+			if ( !signedJWT.verify( verifier ) ) {
+				throw new JWTVerificationException( "JWT signature verification failed during refresh" );
+			}
+
+			JWTClaimsSet	claimsSet		= signedJWT.getJWTClaimsSet();
+			boolean			allowExpired	= options.containsKey( KeyDictionary.allowExpired )
+			    && BooleanCaster.cast( options.get( KeyDictionary.allowExpired ) );
+
+			if ( !allowExpired ) {
+				validateClaims( claimsSet, options );
+			} else {
+				// Validate custom claims only — bypass time checks with a maximal clock skew
+				IStruct claimsToCheck = options.getAsStruct( KeyDictionary.claims );
+				if ( claimsToCheck != null && !claimsToCheck.isEmpty() ) {
+					IStruct tempOptions = new Struct();
+					tempOptions.put( KeyDictionary.claims, claimsToCheck );
+					tempOptions.put( KeyDictionary.clockSkew, ( long ) Integer.MAX_VALUE );
+					validateClaims( claimsSet, tempOptions );
+				}
+			}
+
+			// Copy claims; strip time-sensitive fields so they are regenerated
+			IStruct payload = claimsToStruct( claimsSet );
+			payload.remove( Key.of( "iat" ) );
+			payload.remove( Key.of( "jti" ) );
+			payload.remove( Key.of( "exp" ) );
+			payload.remove( Key.of( "nbf" ) );
+
+			// Apply explicit new expiration from options when provided
+			if ( options.containsKey( KeyDictionary.expireIn ) ) {
+				long expSeconds = LongCaster.cast( options.get( KeyDictionary.expireIn ) );
+				payload.put( Key.of( "exp" ), new DateTime( new Date( System.currentTimeMillis() + expSeconds * 1000 ), ZoneId.of( "UTC" ) ) );
+			}
+
+			// Carry original JOSE headers (e.g., kid) into the refreshed token unless overridden
+			IStruct	createOptions	= new Struct();
+			IStruct	origHeaders		= new Struct();
+			JWSHeader originalHeader = signedJWT.getHeader();
+			if ( originalHeader.getKeyID() != null ) {
+				origHeaders.put( Key.of( "kid" ), originalHeader.getKeyID() );
+			}
+			for ( Map.Entry<String, Object> entry : originalHeader.getCustomParams().entrySet() ) {
+				origHeaders.put( Key.of( entry.getKey() ), entry.getValue() );
+			}
+			if ( !origHeaders.isEmpty() ) {
+				createOptions.put( KeyDictionary.headers, origHeaders );
+			}
+			// options.headers overrides original headers
+			if ( options.containsKey( KeyDictionary.headers ) ) {
+				createOptions.put( KeyDictionary.headers, options.get( KeyDictionary.headers ) );
+			}
+
+			return create( payload, signingKey, algorithm, createOptions );
+		} catch ( JWTVerificationException e ) {
+			throw e;
+		} catch ( JWTExpiredException e ) {
+			throw e;
+		} catch ( JWTNotYetValidException e ) {
+			throw e;
+		} catch ( JOSEException e ) {
+			throw new JWTVerificationException( "Failed to refresh JWT: " + e.getMessage(), e );
+		} catch ( Exception e ) {
+			throw new JWTParseException( "Failed to parse JWT during refresh: " + e.getMessage(), e );
 		}
 	}
 
@@ -717,6 +940,28 @@ public class JWTService extends BaseService {
 		}
 		if ( generateJti && !payload.containsKey( KeyDictionary.jti ) ) {
 			builder.jwtID( UUID.randomUUID().toString() );
+		}
+
+		// Auto-inject defaultIssuer if not already in payload
+		if ( !payload.containsKey( Key.of( "iss" ) ) ) {
+			String defaultIssuer = StringCaster.cast( getDefaultSetting( KeyDictionary.defaultIssuer, "" ) );
+			if ( !defaultIssuer.isEmpty() ) {
+				builder.issuer( defaultIssuer );
+			}
+		}
+		// Auto-inject defaultAudience if not already in payload
+		if ( !payload.containsKey( Key.of( "aud" ) ) ) {
+			String defaultAudience = StringCaster.cast( getDefaultSetting( KeyDictionary.defaultAudience, "" ) );
+			if ( !defaultAudience.isEmpty() ) {
+				builder.audience( defaultAudience );
+			}
+		}
+		// Auto-inject defaultExpiration if not already in payload
+		if ( !payload.containsKey( Key.of( "exp" ) ) ) {
+			long defaultExp = LongCaster.cast( getDefaultSetting( KeyDictionary.defaultExpiration, 0L ) );
+			if ( defaultExp > 0 ) {
+				builder.expirationTime( new Date( System.currentTimeMillis() + defaultExp * 1000 ) );
+			}
 		}
 
 		return builder;
@@ -969,16 +1214,23 @@ public class JWTService extends BaseService {
 	 * @throws JWTKeyException If the secret cannot be parsed or if the algorithm is unsupported.
 	 */
 	private SecretKey parseHmacSecret( String secret, String algorithm ) {
-		try {
-			String hmacAlg = switch ( algorithm ) {
-				case "HS384" -> "HmacSHA384";
-				case "HS512" -> "HmacSHA512";
-				default -> "HmacSHA256";
-			};
-			return new SecretKeySpec( secret.getBytes( StandardCharsets.UTF_8 ), hmacAlg );
-		} catch ( Exception e ) {
-			throw new JWTKeyException( "Failed to create HMAC key: " + e.getMessage(), e );
+		byte[]	keyBytes	= secret.getBytes( StandardCharsets.UTF_8 );
+		int		minBytes	= switch ( algorithm ) {
+								case "HS384" -> 48;
+								case "HS512" -> 64;
+								default -> 32;
+							};
+		if ( keyBytes.length < minBytes ) {
+			throw new JWTKeyException(
+			    "HMAC secret for " + algorithm + " must be at least " + minBytes + " bytes (" + ( minBytes * 8 )
+			        + " bits), got " + keyBytes.length + " bytes. Use jwtGenerateSecret() to create a compliant secret." );
 		}
+		String hmacAlg = switch ( algorithm ) {
+			case "HS384" -> "HmacSHA384";
+			case "HS512" -> "HmacSHA512";
+			default -> "HmacSHA256";
+		};
+		return new SecretKeySpec( keyBytes, hmacAlg );
 	}
 
 	/**
@@ -1079,6 +1331,31 @@ public class JWTService extends BaseService {
 			String	keyName	= entry.getKey().getName();
 			IStruct	keyDef	= StructCaster.cast( entry.getValue() );
 			registerKey( keyName, keyDef );
+		}
+	}
+
+	/**
+	 * Validates that the requested algorithm is permitted.
+	 * Rejects {@code alg:none} unconditionally, and when an {@code allowedAlgorithms}
+	 * list is configured in module settings, rejects any algorithm not on that list.
+	 *
+	 * @param algorithm The algorithm string to validate.
+	 *
+	 * @throws JWTVerificationException if the algorithm is {@code none} or not in the allowlist.
+	 */
+	private void validateAlgorithm( String algorithm ) {
+		if ( algorithm == null || algorithm.equalsIgnoreCase( "none" ) ) {
+			throw new JWTVerificationException( "Algorithm \"none\" is not permitted" );
+		}
+		Array allowed = ( Array ) getDefaultSetting( KeyDictionary.allowedAlgorithms, new Array() );
+		if ( allowed != null && !allowed.isEmpty() ) {
+			for ( Object a : allowed ) {
+				if ( algorithm.equalsIgnoreCase( StringCaster.cast( a ) ) ) {
+					return;
+				}
+			}
+			throw new JWTVerificationException(
+			    "Algorithm \"" + algorithm + "\" is not in the allowed algorithms list: " + allowed );
 		}
 	}
 

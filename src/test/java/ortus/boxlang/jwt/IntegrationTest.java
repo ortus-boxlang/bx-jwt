@@ -34,7 +34,7 @@ public class IntegrationTest extends BaseIntegrationTest {
 		    jwtService = getBoxContext().getRuntime().getGlobalService( "JWTService" );
 		    jwtService.registerKey(
 		        "temp-key",
-		        { algorithm: "HS256", secret: "abcdefghijklmnopqrstuvwxyz12345" }
+		        { algorithm: "HS256", secret: "abcdefghijklmnopqrstuvwxyz123456" }
 		    );
 		    hadKey = jwtService.hasKey( "temp-key" );
 		    jwtService.removeKey( "temp-key" );

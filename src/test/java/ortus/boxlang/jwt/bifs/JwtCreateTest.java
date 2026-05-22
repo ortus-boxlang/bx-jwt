@@ -209,11 +209,12 @@ public class JwtCreateTest extends BaseIntegrationTest {
 		    explicitIat = dateAdd( "d", -1, now() );
 		    token       = jwtCreate( { sub: "user", iat: explicitIat }, secret, "HS256" );
 		    payload     = jwtVerify( token, secret, "HS256" );
-		    result      = dateCompare( payload.iat, explicitIat, "s" );
+		    // Compare Unix epoch seconds so timezone representation differences don't matter
+		    result      = payload.iat.toEpoch() == explicitIat.toEpoch();
 		    """,
 		    context
 		);
-		assertThat( ( Number ) variables.get( "result" ) ).isEqualTo( 0 );
+		assertThat( ( Boolean ) variables.get( "result" ) ).isTrue();
 	}
 
 	@DisplayName( "jti is auto-generated when not in payload" )

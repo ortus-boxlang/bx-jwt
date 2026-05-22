@@ -176,7 +176,7 @@ public class JwtVerifyTest extends BaseIntegrationTest {
 		    secret  = "12345678901234567890123456789012";
 		    token   = jwtCreate( { sub: "user" }, secret, "HS256" );
 		    payload = jwtVerify( token, secret, "HS256" );
-		    result  = payload.iat.getTimezone();
+		    result  = payload.iat.getWrapped().getZone().getId();
 		    """,
 		    context
 		);
