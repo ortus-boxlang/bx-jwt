@@ -151,7 +151,30 @@ class {
 			// This claim is used for token revocation and blacklisting, so it is recommended to leave this enabled unless you have a specific reason to disable it
 			generateJti          : true,
 			// The allowed clock skew in seconds when validating the "exp", "nbf", and "iat" claims of JWTs.
-			clockSkew            : 60
+			clockSkew            : 60,
+
+			// --------------------------------------------------------------------------
+			// JWT Claim Defaults
+			// --------------------------------------------------------------------------
+
+			// Default issuer (iss) to auto-inject into every signed JWT when not explicitly set in the payload.
+			// Leave empty to disable.
+			defaultIssuer        : "",
+			// Default audience (aud) to auto-inject into every signed JWT when not explicitly set in the payload.
+			// Leave empty to disable.
+			defaultAudience      : "",
+			// Default expiration in seconds from now, auto-injected as the "exp" claim when not explicitly set in the payload.
+			// Set to 0 to disable.
+			defaultExpiration    : 0,
+
+			// --------------------------------------------------------------------------
+			// Security
+			// --------------------------------------------------------------------------
+
+			// An array of allowed signing/verification algorithms. When non-empty, any algorithm not in this list will be rejected.
+			// Leave empty to allow all algorithms supported by the module.
+			// Ex: [ "HS256", "RS256", "ES256" ]
+			allowedAlgorithms    : []
 		}
 
 		/**

@@ -21,18 +21,26 @@ import ortus.boxlang.runtime.scopes.Key;
 public class KeyDictionary {
 
 	public static final Key	algorithm				= new Key( "algorithm" );
+	public static final Key	allowedAlgorithms		= new Key( "allowedAlgorithms" );
+	public static final Key	allowExpired			= new Key( "allowExpired" );
+	public static final Key	bits					= new Key( "bits" );
 	public static final Key	claims					= new Key( "claims" );
 	public static final Key	clockSkew				= new Key( "clockSkew" );
 	public static final Key	defaultAlgorithm		= new Key( "defaultAlgorithm" );
+	public static final Key	defaultAudience			= new Key( "defaultAudience" );
 	public static final Key	defaultDecryptionKey	= new Key( "defaultDecryptionKey" );
 	public static final Key	defaultEncAlgorithm		= new Key( "defaultEncAlgorithm" );
 	public static final Key	defaultEncryptionKey	= new Key( "defaultEncryptionKey" );
+	public static final Key	defaultExpiration		= new Key( "defaultExpiration" );
+	public static final Key	defaultIssuer			= new Key( "defaultIssuer" );
 	public static final Key	defaultKeyAlgorithm		= new Key( "defaultKeyAlgorithm" );
 	public static final Key	defaultSigningKey		= new Key( "defaultSigningKey" );
 	public static final Key	defaultVerifyKey		= new Key( "defaultVerifyKey" );
 	public static final Key	encAlgorithm			= new Key( "encAlgorithm" );
+	public static final Key	expireIn				= new Key( "expireIn" );
 	public static final Key	generateIat				= new Key( "generateIat" );
 	public static final Key	generateJti				= new Key( "generateJti" );
+	public static final Key	header					= new Key( "header" );
 	public static final Key	headers					= new Key( "headers" );
 	public static final Key	iat						= new Key( "iat" );
 	public static final Key	isValidLicense			= new Key( "isValidLicense" );
