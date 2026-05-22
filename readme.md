@@ -17,6 +17,23 @@ A production-ready BoxLang module for creating, signing, verifying, encrypting, 
 
 ---
 
+## Available BIFs
+
+| BIF | Signature | Description |
+| --- | --------- | ----------- |
+| `jwtNew` | `jwtNew()` | Returns a fluent `JwtBuilder` for chainable token construction. Terminate with `.sign()` or `.encrypt()`. |
+| `jwtCreate` | `jwtCreate( payload, [key], [algorithm], [options] )` | Signs a payload struct and returns a compact JWS token string. |
+| `jwtVerify` | `jwtVerify( token, [key], [algorithm], [options] )` | Verifies a JWS signature and validates claims. Returns the claims struct. Throws on any failure. |
+| `jwtValidate` | `jwtValidate( token, [key], [algorithm], [options] )` | Like `jwtVerify` but returns `true`/`false` instead of throwing. |
+| `jwtDecode` | `jwtDecode( token )` | Decodes a JWS token **without** verifying the signature. Returns `{ header: {}, payload: {} }`. |
+| `jwtRefresh` | `jwtRefresh( token, [key], [algorithm], [options] )` | Re-issues a token with fresh `iat`, `jti`, and optionally a new `exp`. All application claims are preserved. |
+| `jwtEncrypt` | `jwtEncrypt( payload, [key], [options] )` | Encrypts a payload as a compact JWE token string. |
+| `jwtDecrypt` | `jwtDecrypt( token, [key], [options] )` | Decrypts a JWE token and returns the claims struct. |
+| `jwtGenerateSecret` | `jwtGenerateSecret( [bits] )` | Generates a cryptographically random Base64-encoded HMAC secret. Default: 256 bits. |
+| `jwtGenerateKeyPair` | `jwtGenerateKeyPair( [algorithm] )` | Generates an RSA or EC key pair and returns `{ privateKey: "...", publicKey: "..." }` as PEM strings. |
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
