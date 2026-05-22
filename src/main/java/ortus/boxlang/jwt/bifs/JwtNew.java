@@ -11,40 +11,53 @@
 package ortus.boxlang.jwt.bifs;
 
 import ortus.boxlang.jwt.services.JWTService;
-import ortus.boxlang.jwt.util.KeyDictionary;
-import ortus.boxlang.runtime.bifs.BIF;
+import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.bifs.BoxBIF;
-import ortus.boxlang.runtime.bifs.global.system.CreateObject;
 import ortus.boxlang.runtime.context.IBoxContext;
-import ortus.boxlang.runtime.interop.DynamicInteropService;
+import ortus.boxlang.runtime.runnables.IClassRunnable;
 import ortus.boxlang.runtime.scopes.ArgumentsScope;
 import ortus.boxlang.runtime.scopes.Key;
-import ortus.boxlang.runtime.types.Struct;
 
 @BoxBIF( description = "Creates and returns a JwtBuilder BoxLang class instance pre-seeded with the JWTService for fluent JWT construction." )
-public class JwtNew extends BIF {
+public class JwtNew extends BaseJwtBif {
+
+	private static final String className = "bxModules.bxjwt.models.JwtBuilder";
 
 	/**
-	 * Creates and returns a JwtBuilder BoxLang class instance pre-seeded with the JWTService for fluent JWT construction.
+	 * Creates and returns a fluent {@code JwtBuilder} instance.
+	 *
+	 * The builder is initialized with the module {@code JWTService}, allowing chainable
+	 * claim/header composition and final token generation via {@code sign()} or {@code encrypt()}.
 	 *
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF. (No arguments required for this BIF.)
+	 *
+	 *                  <pre>{@code
+	 * token = jwtNew()
+	 *     .subject( "user-123" )
+	 *     .issuer( "my-api" )
+	 *     .claim( "roles", [ "admin" ] )
+	 *     .sign( "12345678901234567890123456789012", "HS256" );
+	 * }</pre>
+	 *
+	 *                  <pre>{@code
+	 * token = jwtNew()
+	 *     .subject( "user-123" )
+	 *     .header( "kid", "rsa-key-1" )
+	 *     .encrypt( publicKey, "RSA-OAEP-256", "A256GCM" );
+	 * }</pre>
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {
-		JWTService		service		= ( JWTService ) context.getRuntime().getGlobalService( KeyDictionary.JWTService );
+		JWTService		service	= getJWTService( context );
 
-		ArgumentsScope	createArgs	= new ArgumentsScope();
-		createArgs.put( Key.of( "type" ), "class" );
-		createArgs.put( Key.of( "className" ), "bxModules.bxjwt.models.JwtBuilder" );
-		createArgs.put( Key.of( "properties" ), new Struct() );
+		// Create the Builder class
+		IClassRunnable	builder	= ( IClassRunnable ) BoxRuntime.getInstance()
+		    .getFunctionService()
+		    .getGlobalFunction( Key.createObject )
+		    .invoke( context, new Object[] { className }, false, Key.createObject );
 
-		CreateObject	createObject	= new CreateObject();
-		Object			builder			= createObject.invoke( context, createArgs );
-
-		DynamicInteropService.dereferenceAndInvoke( null, builder, context, Key.of( "init" ), new Object[] { service }, false );
-
-		return builder;
+		return builder.dereferenceAndInvoke( context, Key.init, new Object[] { service }, false );
 	}
 
 }

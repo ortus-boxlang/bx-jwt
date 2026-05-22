@@ -72,6 +72,7 @@ import ortus.boxlang.jwt.exceptions.JWTVerificationException;
 import ortus.boxlang.jwt.models.JWTKeyEntry;
 import ortus.boxlang.jwt.util.KeyDictionary;
 import ortus.boxlang.runtime.BoxRuntime;
+import ortus.boxlang.runtime.config.util.PlaceholderHelper;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
 import ortus.boxlang.runtime.scopes.Key;
@@ -160,7 +161,7 @@ public class JWTService extends BaseService {
 		JWTKeyEntry	entry		= new JWTKeyEntry( name, algorithm );
 		Object		secretVal	= keyConfig.get( KeyDictionary.secret );
 		if ( secretVal != null ) {
-			String secret = interpolateEnvVars( StringCaster.cast( secretVal ) );
+			String secret = PlaceholderHelper.resolve( StringCaster.cast( secretVal ) );
 			entry.setSecretKey( parseHmacSecret( secret, algorithm ) );
 		}
 
@@ -932,30 +933,6 @@ public class JWTService extends BaseService {
 		} catch ( Exception e ) {
 			throw new JWTKeyException( "Failed to parse JWK struct: " + e.getMessage(), e );
 		}
-	}
-
-	/**
-	 * Interpolates environment variables in the input string using the syntax ${env.VAR_NAME}. This allows configuration values to reference environment
-	 * variables
-	 * dynamically. If the input string does not contain any environment variable references, it is returned as-is.
-	 *
-	 * @param value The input string that may contain environment variable references.
-	 *
-	 * @return The input string with environment variables interpolated, or the original string if no interpolation is needed.
-	 */
-	private String interpolateEnvVars( String value ) {
-		if ( value == null || !value.contains( "${" ) ) {
-			return value;
-		}
-		java.util.regex.Matcher	m	= java.util.regex.Pattern.compile( "\\$\\{env\\.([^}]+)\\}" ).matcher( value );
-		StringBuffer			sb	= new StringBuffer();
-		while ( m.find() ) {
-			String	envName	= m.group( 1 );
-			String	envVal	= System.getenv( envName );
-			m.appendReplacement( sb, envVal != null ? java.util.regex.Matcher.quoteReplacement( envVal ) : "" );
-		}
-		m.appendTail( sb );
-		return sb.toString();
 	}
 
 	/**

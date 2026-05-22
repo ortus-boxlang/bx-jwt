@@ -32,6 +32,8 @@ public class KeyDictionary {
 	public static final Key	publicKey				= new Key( "publicKey" );
 	public static final Key	jwk						= new Key( "jwk" );
 	public static final Key	payload					= new Key( "payload" );
+	public static final Key	token					= new Key( "token" );
+	public static final Key	key						= new Key( "key" );
 	public static final Key	headers					= new Key( "headers" );
 	public static final Key	claims					= new Key( "claims" );
 	public static final Key	options					= new Key( "options" );

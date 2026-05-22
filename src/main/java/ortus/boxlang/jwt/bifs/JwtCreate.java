@@ -12,138 +12,95 @@ package ortus.boxlang.jwt.bifs;
 
 import ortus.boxlang.jwt.services.JWTService;
 import ortus.boxlang.jwt.util.KeyDictionary;
-import ortus.boxlang.runtime.bifs.BIF;
 import ortus.boxlang.runtime.bifs.BoxBIF;
 import ortus.boxlang.runtime.context.IBoxContext;
-import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
 import ortus.boxlang.runtime.scopes.ArgumentsScope;
-import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Argument;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 
 @BoxBIF( description = "Creates a signed JWT (JWS) using HMAC, RSA, or EC keys. Delegates to JWTService.create()." )
-public class JwtCreate extends BIF {
+public class JwtCreate extends BaseJwtBif {
 
 	/**
 	 * Constructor for JwtCreate BIF. Declares the arguments for the BIF.
 	 */
 	public JwtCreate() {
 		declaredArguments = new Argument[] {
-		    new Argument( true, Argument.STRUCT, Key.of( "payload" ) ),
-		    new Argument( false, Argument.ANY, Key.of( "key" ) ),
-		    new Argument( false, Argument.STRING, Key.of( "algorithm" ) ),
-		    new Argument( false, Argument.STRUCT, Key.of( "options" ), new Struct() )
+		    new Argument( true, Argument.STRUCT, KeyDictionary.payload ),
+		    new Argument( false, Argument.ANY, KeyDictionary.key ),
+		    new Argument( false, Argument.STRING, KeyDictionary.algorithm ),
+		    new Argument( false, Argument.STRUCT, KeyDictionary.options, new Struct() )
 		};
 	}
 
 	/**
-	 * Creates a signed JWT (JWS) using the provided payload, key, algorithm, and options.
+	 * Creates a signed JWT (JWS) from the supplied payload.
+	 *
+	 * The key can be provided as:
+	 * <ul>
+	 * <li>a named key from the module key registry</li>
+	 * <li>a raw secret (for HMAC algorithms)</li>
+	 * <li>a PEM/JWK-compatible value that {@code JWTService.parseKey()} can parse</li>
+	 * </ul>
+	 *
+	 * The algorithm is resolved in this order:
+	 * <ol>
+	 * <li>explicit {@code algorithm} argument</li>
+	 * <li>named key algorithm (when {@code key} is a registered key name)</li>
+	 * <li>module setting {@code defaultAlgorithm} (fallback {@code HS256})</li>
+	 * </ol>
+	 *
+	 * Returns the serialized compact JWT string.
+	 *
+	 * <pre>{@code
+	 * secret = "12345678901234567890123456789012";
+	 * token  = jwtCreate( { sub: "user-123", iss: "my-api" }, secret, "HS256" );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * // Uses a key registered in ModuleConfig settings.keys
+	 * token = jwtCreate( { sub: "user-123" }, "myapp-signing" );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * token = jwtCreate(
+	 *     { sub: "user-123", aud: "api" },
+	 *     secret,
+	 *     "HS256",
+	 *     { headers: { kid: "v1", typ: "JWT" } }
+	 * );
+	 * }</pre>
 	 *
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF.
 	 *
-	 * @argument.payload The payload to encode in the JWT. Must be a struct.
+	 * @argument.payload Claims payload to encode in the JWT. Must be a struct.
 	 *
-	 * @argument.key The key to use for signing. Can be a string (key name) or a key object. Optional if a default is configured.
+	 * @argument.key Signing key material. Can be a key name, key object, PEM/JWK value, or HMAC secret.
+	 *               Optional when {@code defaultSigningKey} is configured.
 	 *
-	 * @argument.algorithm The signing algorithm to use (e.g., HS256, RS256). Optional; defaults to module setting or HS256.
+	 * @argument.algorithm Signing algorithm (for example, {@code HS256}, {@code RS256}, {@code ES256}).
+	 *                     Optional when resolved from key metadata or module defaults.
 	 *
-	 * @argument.options Additional options for JWT creation (expiration, issuer, etc.). Optional.
+	 * @argument.options Optional signing options, including custom JOSE headers.
+	 *
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {
-		JWTService			service		= ( JWTService ) context.getRuntime().getGlobalService( KeyDictionary.JWTService );
-		IStruct				payload		= StructCaster.cast( arguments.get( Key.of( "payload" ) ) );
-		java.security.Key	key			= resolveKey( service, arguments, "signing" );
-		String				algorithm	= resolveAlgorithm( service, arguments, "signing" );
+		JWTService			service		= getJWTService( context );
+		IStruct				payload		= StructCaster.cast( arguments.get( KeyDictionary.payload ) );
+
+		// Key resolution and algorithm resolution are handled in the resolveKey method, which considers the key argument, defaults, and key metadata.
+		java.security.Key	key			= resolveSigningKey( service, arguments );
+		String				algorithm	= resolveAlgorithm( service, arguments );
+
+		// Options are passed directly to the service method for flexibility, as they may include custom headers or other signing options.
 		IStruct				options		= getOptions( arguments );
+
+		// Delegate to the JWTService to create and sign the JWT, returning the compact serialized string.
 		return service.create( payload, key, algorithm, options );
-	}
-
-	/**
-	 * Resolves the signing key from the arguments or module settings.
-	 *
-	 * @param service   The JWTService instance.
-	 * @param arguments The arguments scope containing the key.
-	 * @param operation The operation type (e.g., "signing").
-	 *
-	 * @return The resolved signing key.
-	 *
-	 * @throws ortus.boxlang.jwt.exceptions.JWTKeyException if no key is provided or configured.
-	 */
-	private java.security.Key resolveKey( JWTService service, ArgumentsScope arguments, String operation ) {
-		Object keyArg = arguments.get( Key.of( "key" ) );
-		if ( keyArg == null || "".equals( keyArg ) ) {
-			String defaultKey = getDefaultSetting( service, KeyDictionary.defaultSigningKey, "" );
-			if ( !defaultKey.isEmpty() ) {
-				return service.resolveSigningKey( defaultKey );
-			}
-			throw new ortus.boxlang.jwt.exceptions.JWTKeyException(
-			    "No key provided and no defaultSigningKey configured" );
-		}
-		if ( keyArg instanceof String keyStr && service.hasKey( keyStr ) ) {
-			return service.resolveSigningKey( keyStr );
-		}
-		String algorithm = resolveAlgorithm( service, arguments, operation );
-		return service.parseKey( keyArg, algorithm );
-	}
-
-	/**
-	 * Resolves the algorithm to use for signing from the arguments or module settings.
-	 *
-	 * @param service   The JWTService instance.
-	 * @param arguments The arguments scope containing the algorithm.
-	 * @param operation The operation type (e.g., "signing").
-	 *
-	 * @return The algorithm as a string.
-	 */
-	private String resolveAlgorithm( JWTService service, ArgumentsScope arguments, String operation ) {
-		Object algArg = arguments.get( Key.of( "algorithm" ) );
-		if ( algArg != null && !"".equals( algArg ) ) {
-			return StringCaster.cast( algArg );
-		}
-		Object keyArg = arguments.get( Key.of( "key" ) );
-		if ( keyArg instanceof String keyStr && service.hasKey( keyStr ) ) {
-			return service.getKey( keyStr ).getAlgorithm();
-		}
-		return getDefaultSetting( service, KeyDictionary.defaultAlgorithm, "HS256" );
-	}
-
-	/**
-	 * Retrieves the options struct from the arguments, if present.
-	 *
-	 * @param arguments The arguments scope.
-	 *
-	 * @return The options struct, or null if not provided.
-	 */
-	private IStruct getOptions( ArgumentsScope arguments ) {
-		Object opts = arguments.get( Key.of( "options" ) );
-		if ( opts instanceof IStruct s ) {
-			return s;
-		}
-		return null;
-	}
-
-	/**
-	 * Retrieves a default setting from the module settings or returns the provided default value.
-	 *
-	 * @param service      The JWTService instance.
-	 * @param settingKey   The key for the setting to retrieve.
-	 * @param defaultValue The value to return if the setting is not found.
-	 *
-	 * @return The setting value as a string, or the default value if not found.
-	 */
-	public String getDefaultSetting( JWTService service, Key settingKey, String defaultValue ) {
-		if ( !service.getRuntime().getModuleService().hasModule( KeyDictionary.moduleName ) ) {
-			return defaultValue;
-		}
-		IStruct settings = service.getRuntime().getModuleService().getModuleSettings( KeyDictionary.moduleName );
-		if ( settings == null || !settings.containsKey( settingKey ) ) {
-			return defaultValue;
-		}
-		return StringCaster.cast( settings.get( settingKey ) );
 	}
 
 }

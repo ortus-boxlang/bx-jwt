@@ -12,110 +12,74 @@ package ortus.boxlang.jwt.bifs;
 
 import ortus.boxlang.jwt.services.JWTService;
 import ortus.boxlang.jwt.util.KeyDictionary;
-import ortus.boxlang.runtime.bifs.BIF;
 import ortus.boxlang.runtime.bifs.BoxBIF;
 import ortus.boxlang.runtime.context.IBoxContext;
-import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.scopes.ArgumentsScope;
-import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Argument;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 
 @BoxBIF( description = "Encrypts a payload as a JWE token using RSA, EC, or direct symmetric key management. Delegates to JWTService.encrypt()." )
-public class JwtEncrypt extends BIF {
+public class JwtEncrypt extends BaseJwtBif {
 
 	/**
 	 * Constructor for JwtEncrypt BIF. Declares the arguments for the BIF.
 	 */
 	public JwtEncrypt() {
 		declaredArguments = new Argument[] {
-		    new Argument( true, Argument.ANY, Key.of( "payload" ) ),
-		    new Argument( false, Argument.ANY, Key.of( "key" ) ),
-		    new Argument( false, Argument.STRUCT, Key.of( "options" ), new Struct() )
+		    new Argument( true, Argument.ANY, KeyDictionary.payload ),
+		    new Argument( false, Argument.ANY, KeyDictionary.key ),
+		    new Argument( false, Argument.STRUCT, KeyDictionary.options, new Struct() )
 		};
 	}
 
 	/**
 	 * Encrypts a payload as a JWE token using the provided key and options.
 	 *
+	 * Supports structured payloads (claims) and string payloads (for nested JWT workflows).
+	 *
+	 * Returns the serialized compact JWE string.
+	 *
+	 * <pre>{@code
+	 * secret = "12345678901234567890123456789012";
+	 * token = jwtEncrypt(
+	 *     { sub: "enc-user", pii: "sensitive" },
+	 *     secret,
+	 *     { keyAlgorithm: "dir", encAlgorithm: "A256GCM" }
+	 * );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * token = jwtEncrypt(
+	 *     { sub: "enc-user" },
+	 *     "partner-public",
+	 *     { keyAlgorithm: "RSA-OAEP-256", encAlgorithm: "A256GCM" }
+	 * );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * // Nested JWT: encrypt a pre-signed JWS string
+	 * nested = jwtEncrypt( signedToken, publicKey, { keyAlgorithm: "RSA-OAEP-256", encAlgorithm: "A256GCM" } );
+	 * }</pre>
+	 *
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF.
 	 *
-	 * @argument.payload The payload to encrypt as a JWE token.
+	 * @argument.payload Payload to encrypt. Can be a struct or a string.
 	 *
-	 * @argument.key The key to use for encryption. Can be a string (key name) or a key object. Optional if a default is configured.
+	 * @argument.key Encryption key material. Can be a key name, key object, PEM/JWK value, or symmetric secret.
+	 *               Optional when {@code defaultEncryptionKey} is configured.
 	 *
-	 * @argument.options Additional options for encryption. Optional.
+	 * @argument.options Encryption options such as {@code keyAlgorithm}, {@code encAlgorithm}, and custom headers.
+	 *
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {
-		JWTService			service	= ( JWTService ) context.getRuntime().getGlobalService( KeyDictionary.JWTService );
-		Object				payload	= arguments.get( Key.of( "payload" ) );
-		java.security.Key	key		= resolveKey( service, arguments );
+		JWTService			service	= getJWTService( context );
+		Object				payload	= arguments.get( KeyDictionary.payload );
+		java.security.Key	key		= resolveEncryptionKey( service, arguments );
 		IStruct				options	= getOptions( arguments );
 		return service.encrypt( payload, key, options );
-	}
-
-	/**
-	 * Resolves the encryption key from the arguments or module settings.
-	 *
-	 * @param service   The JWTService instance.
-	 * @param arguments The arguments scope containing the key.
-	 *
-	 * @return The resolved encryption key.
-	 *
-	 * @throws ortus.boxlang.jwt.exceptions.JWTKeyException if no key is provided or configured.
-	 */
-	private java.security.Key resolveKey( JWTService service, ArgumentsScope arguments ) {
-		Object keyArg = arguments.get( Key.of( "key" ) );
-		if ( keyArg == null || "".equals( keyArg ) ) {
-			String defaultKey = getDefaultSetting( service, KeyDictionary.defaultEncryptionKey, "" );
-			if ( !defaultKey.isEmpty() ) {
-				return service.resolveEncryptionKey( defaultKey );
-			}
-			throw new ortus.boxlang.jwt.exceptions.JWTKeyException(
-			    "No key provided and no defaultEncryptionKey configured" );
-		}
-		if ( keyArg instanceof String keyStr && service.hasKey( keyStr ) ) {
-			return service.resolveEncryptionKey( keyStr );
-		}
-		return service.parseKey( keyArg, "RSA-OAEP-256" );
-	}
-
-	/**
-	 * Retrieves the options struct from the arguments, if present.
-	 *
-	 * @param arguments The arguments scope.
-	 *
-	 * @return The options struct, or null if not provided.
-	 */
-	private IStruct getOptions( ArgumentsScope arguments ) {
-		Object opts = arguments.get( Key.of( "options" ) );
-		if ( opts instanceof IStruct s ) {
-			return s;
-		}
-		return null;
-	}
-
-	/**
-	 * Retrieves a default setting from the module settings or returns the provided default value.
-	 *
-	 * @param service      The JWTService instance.
-	 * @param settingKey   The key for the setting to retrieve.
-	 * @param defaultValue The value to return if the setting is not found.
-	 *
-	 * @return The setting value as a string, or the default value if not found.
-	 */
-	public String getDefaultSetting( JWTService service, Key settingKey, String defaultValue ) {
-		if ( !service.getRuntime().getModuleService().hasModule( KeyDictionary.moduleName ) ) {
-			return defaultValue;
-		}
-		IStruct settings = service.getRuntime().getModuleService().getModuleSettings( KeyDictionary.moduleName );
-		if ( settings == null || !settings.containsKey( settingKey ) ) {
-			return defaultValue;
-		}
-		return StringCaster.cast( settings.get( settingKey ) );
 	}
 
 }
