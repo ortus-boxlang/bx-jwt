@@ -12,110 +12,73 @@ package ortus.boxlang.jwt.bifs;
 
 import ortus.boxlang.jwt.services.JWTService;
 import ortus.boxlang.jwt.util.KeyDictionary;
-import ortus.boxlang.runtime.bifs.BIF;
 import ortus.boxlang.runtime.bifs.BoxBIF;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.scopes.ArgumentsScope;
-import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.Argument;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
 
 @BoxBIF( description = "Decrypts a JWE token and returns the payload claims. Delegates to JWTService.decrypt()." )
-public class JwtDecrypt extends BIF {
+public class JwtDecrypt extends BaseJwtBif {
 
 	/**
 	 * Constructor for JwtDecrypt BIF. Declares the arguments for the BIF.
 	 */
 	public JwtDecrypt() {
 		declaredArguments = new Argument[] {
-		    new Argument( true, Argument.STRING, Key.of( "token" ) ),
-		    new Argument( false, Argument.ANY, Key.of( "key" ) ),
-		    new Argument( false, Argument.STRUCT, Key.of( "options" ), new Struct() )
+		    new Argument( true, Argument.STRING, KeyDictionary.token ),
+		    new Argument( false, Argument.ANY, KeyDictionary.key ),
+		    new Argument( false, Argument.STRUCT, KeyDictionary.options, new Struct() )
 		};
 	}
 
 	/**
-	 * Decrypts a JWE token and returns the payload claims.
+	 * Decrypts a compact JWE token and returns the decrypted payload.
+	 *
+	 * For structured payloads, this returns a claims struct. For nested JWT scenarios,
+	 * the returned struct includes the nested payload string for follow-up verification.
+	 *
+	 * <pre>{@code
+	 * payload = jwtDecrypt(
+	 *     token,
+	 *     "12345678901234567890123456789012",
+	 *     { keyAlgorithm: "dir", encAlgorithm: "A256GCM" }
+	 * );
+	 * writeDump( payload.sub );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * payload = jwtDecrypt(
+	 *     token,
+	 *     "myapp-private",
+	 *     { keyAlgorithm: "RSA-OAEP-256", encAlgorithm: "A256GCM" }
+	 * );
+	 * }</pre>
+	 *
+	 * <pre>{@code
+	 * decrypted = jwtDecrypt( nestedToken, outerPrivateKey, { keyAlgorithm: "RSA-OAEP-256", encAlgorithm: "A256GCM" } );
+	 * innerPayload = jwtVerify( decrypted.payload, innerPublicKey, "RS256" );
+	 * }</pre>
 	 *
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF.
 	 *
 	 * @argument.token The JWE token to decrypt.
 	 *
-	 * @argument.key The key to use for decryption. Can be a string (key name) or a key object. Optional if a default is configured.
+	 * @argument.key Decryption key material. Can be a key name, key object, PEM/JWK value, or symmetric secret.
+	 *               Optional when {@code defaultDecryptionKey} is configured.
 	 *
-	 * @argument.options Additional options for decryption. Optional.
+	 * @argument.options Decryption options such as {@code keyAlgorithm} and {@code encAlgorithm}.
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {
-		JWTService			service	= ( JWTService ) context.getRuntime().getGlobalService( KeyDictionary.JWTService );
-		String				token	= StringCaster.cast( arguments.get( Key.of( "token" ) ) );
-		java.security.Key	key		= resolveKey( service, arguments );
+		JWTService			service	= getJWTService( context );
+		String				token	= StringCaster.cast( arguments.get( TOKEN_ARGUMENT ) );
+		java.security.Key	key		= resolveDecryptionKey( service, arguments );
 		IStruct				options	= getOptions( arguments );
 		return service.decrypt( token, key, options );
-	}
-
-	/**
-	 * Resolves the decryption key from the arguments or module settings.
-	 *
-	 * @param service   The JWTService instance.
-	 * @param arguments The arguments scope containing the key.
-	 *
-	 * @return The resolved decryption key.
-	 *
-	 * @throws ortus.boxlang.jwt.exceptions.JWTKeyException if no key is provided or configured.
-	 */
-	private java.security.Key resolveKey( JWTService service, ArgumentsScope arguments ) {
-		Object keyArg = arguments.get( Key.of( "key" ) );
-		if ( keyArg == null || "".equals( keyArg ) ) {
-			String defaultKey = getDefaultSetting( service, KeyDictionary.defaultDecryptionKey, "" );
-			if ( !defaultKey.isEmpty() ) {
-				return service.resolveDecryptionKey( defaultKey );
-			}
-			throw new ortus.boxlang.jwt.exceptions.JWTKeyException(
-			    "No key provided and no defaultDecryptionKey configured" );
-		}
-		if ( keyArg instanceof String keyStr && service.hasKey( keyStr ) ) {
-			return service.resolveDecryptionKey( keyStr );
-		}
-		return service.parseKey( keyArg, "RSA-OAEP-256" );
-	}
-
-	/**
-	 * Retrieves the options struct from the arguments, if present.
-	 *
-	 * @param arguments The arguments scope.
-	 *
-	 * @return The options struct, or null if not provided.
-	 */
-	private IStruct getOptions( ArgumentsScope arguments ) {
-		Object opts = arguments.get( Key.of( "options" ) );
-		if ( opts instanceof IStruct s ) {
-			return s;
-		}
-		return null;
-	}
-
-	/**
-	 * Retrieves a default setting from the module settings or returns the provided default value.
-	 *
-	 * @param service      The JWTService instance.
-	 * @param settingKey   The key for the setting to retrieve.
-	 * @param defaultValue The value to return if the setting is not found.
-	 *
-	 * @return The setting value as a string, or the default value if not found.
-	 */
-	public String getDefaultSetting( JWTService service, Key settingKey, String defaultValue ) {
-		if ( !service.getRuntime().getModuleService().hasModule( KeyDictionary.moduleName ) ) {
-			return defaultValue;
-		}
-		IStruct settings = service.getRuntime().getModuleService().getModuleSettings( KeyDictionary.moduleName );
-		if ( settings == null || !settings.containsKey( settingKey ) ) {
-			return defaultValue;
-		}
-		return StringCaster.cast( settings.get( settingKey ) );
 	}
 
 }
