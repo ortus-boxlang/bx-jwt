@@ -412,8 +412,11 @@ public class JWTService extends BaseService {
 	 */
 	public String create( IStruct payload, java.security.Key key, String algorithm, IStruct options ) {
 		try {
+			// Parse the algorithm accordingly and create the signer.
 			JWSAlgorithm			alg				= JWSAlgorithm.parse( algorithm );
 			JWSSigner				signer			= createSigner( key, alg );
+			// Build the appropriate claims requested in the payload, and apply any custom headers from options.
+			// The service method handles the actual signing and serialization of the JWT.
 			JWTClaimsSet.Builder	claimsBuilder	= buildClaims( payload, options );
 			JWSHeader.Builder		headerBuilder	= new JWSHeader.Builder( alg );
 			applyHeaders( headerBuilder, options );
@@ -840,15 +843,21 @@ public class JWTService extends BaseService {
 			clockSkewSeconds = LongCaster.cast( getDefaultSetting( KeyDictionary.clockSkew, DEFAULT_CLOCK_SKEW ) );
 		}
 
-		Date	now	= new Date( System.currentTimeMillis() - clockSkewSeconds * 1000 );
-		Date	exp	= claimsSet.getExpirationTime();
-		if ( exp != null && now.after( exp ) ) {
-			throw new JWTExpiredException( "JWT has expired at " + exp );
+		// Verify Token Expiration: subtract skew so tokens expired within the window are still accepted
+		long	skewMs				= clockSkewSeconds * 1000;
+		Date	expCheck			= new Date( System.currentTimeMillis() - skewMs );
+		Date	targetExpiration	= claimsSet.getExpirationTime();
+		if ( targetExpiration != null && expCheck.after( targetExpiration ) ) {
+			throw new JWTExpiredException( "JWT has expired at " + targetExpiration );
 		}
 
-		Date nbf = claimsSet.getNotBeforeTime();
-		if ( nbf != null && now.before( nbf ) ) {
-			throw new JWTNotYetValidException( "JWT not valid before " + nbf );
+		// Verify Not-Before: add skew so tokens that become valid within the window are accepted.
+		// This uses the opposite direction from exp — if the issuer's clock is ahead of ours by up
+		// to skew seconds, the token should still be accepted.
+		Date	nbfCheck	= new Date( System.currentTimeMillis() + skewMs );
+		Date	targetNbf	= claimsSet.getNotBeforeTime();
+		if ( targetNbf != null && nbfCheck.before( targetNbf ) ) {
+			throw new JWTNotYetValidException( "JWT not valid before " + targetNbf );
 		}
 	}
 
