@@ -17,6 +17,7 @@ import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.scopes.ArgumentsScope;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
+import ortus.boxlang.runtime.types.Struct;
 
 /**
  * Shared base class for JWT BIFs containing common service, key, algorithm,
@@ -43,14 +44,14 @@ public abstract class BaseJwtBif extends BIF {
 	 *
 	 * @param arguments The inbound BIF argument scope.
 	 *
-	 * @return The options struct when present, otherwise null.
+	 * @return The options struct when present, otherwise a new struct
 	 */
 	protected IStruct getOptions( ArgumentsScope arguments ) {
-		Object opts = arguments.get( KeyDictionary.options );
-		if ( opts instanceof IStruct s ) {
+		Object options = arguments.get( KeyDictionary.options );
+		if ( options instanceof IStruct s ) {
 			return s;
 		}
-		return null;
+		return new Struct();
 	}
 
 	/**

@@ -73,8 +73,10 @@ import ortus.boxlang.jwt.models.JWTKeyEntry;
 import ortus.boxlang.jwt.util.KeyDictionary;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.config.util.PlaceholderHelper;
+import ortus.boxlang.runtime.dynamic.casters.LongCaster;
 import ortus.boxlang.runtime.dynamic.casters.StringCaster;
 import ortus.boxlang.runtime.dynamic.casters.StructCaster;
+import ortus.boxlang.runtime.logging.BoxLangLogger;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.services.BaseService;
 import ortus.boxlang.runtime.types.Array;
@@ -86,11 +88,23 @@ public class JWTService extends BaseService {
 
 	/**
 	 * --------------------------------------------------------------------------
-	 * Public Properties
+	 * Private Properties
 	 * --------------------------------------------------------------------------
 	 */
 
-	private ConcurrentHashMap<String, JWTKeyEntry> keyRegistry = new ConcurrentHashMap<>();
+	private ConcurrentHashMap<String, JWTKeyEntry>	keyRegistry		= new ConcurrentHashMap<>();
+
+	/**
+	 * Module settings are accessed frequently for defaults, so we cache them in a static struct for quick access.
+	 */
+	private static final IStruct					MODULE_SETTINGS	= BoxRuntime.getInstance()
+	    .getModuleService()
+	    .getModuleSettings( KeyDictionary.moduleName );
+
+	/**
+	 * Logger instance for the JWTService class. Used for logging key registration, JWT operations, and error conditions.
+	 */
+	private static final BoxLangLogger				logger			= BoxRuntime.getInstance().getLoggingService().APPLICATION_LOGGER;
 
 	/**
 	 * --------------------------------------------------------------------------
@@ -134,6 +148,7 @@ public class JWTService extends BaseService {
 	@Override
 	public void onStartup() {
 		parseConfiguredKeys();
+		logger.trace( "JWTService startup complete. Registered keys: {}", keyRegistry.keySet() );
 	}
 
 	/**
@@ -144,6 +159,7 @@ public class JWTService extends BaseService {
 	@Override
 	public void onShutdown( Boolean force ) {
 		this.keyRegistry.clear();
+		logger.trace( "JWTService shutdown complete. Key registry cleared." );
 	}
 
 	/**
@@ -152,6 +168,14 @@ public class JWTService extends BaseService {
 	 * --------------------------------------------------------------------------
 	 */
 
+	/**
+	 * Registers a key in the service's key registry with the given name and configuration.
+	 *
+	 * @param name      The name of the key to register.
+	 * @param keyConfig The configuration for the key.
+	 *
+	 * @return
+	 */
 	public JWTKeyEntry registerKey( String name, IStruct keyConfig ) {
 		String algorithm = StringCaster.cast( keyConfig.getOrDefault( KeyDictionary.algorithm, "" ) );
 		if ( algorithm.isEmpty() ) {
@@ -407,18 +431,34 @@ public class JWTService extends BaseService {
 	 * @param algorithm The verification algorithm to use (e.g., "RS256", "HS256"). Optional if resolved from key metadata or defaults.
 	 * @param options   Additional verification options such as custom JOSE headers, leeway, and claim checks.
 	 *
+	 * @throws JWTVerificationException if the token fails signature verification or claim validation.
+	 * @throws JWTExpiredException      if the token is expired based on the "exp" claim and current time.
+	 * @throws JWTNotYetValidException  if the token is not yet valid based on the "nbf" claim and current time.
+	 * @throws JWTParseException        if the token cannot be parsed as a valid JWT structure.
+	 *
 	 * @return The claims contained in the verified JWT.
 	 */
 	public IStruct verify( String token, java.security.Key key, String algorithm, IStruct options ) {
 		try {
+			// Algorithm resolution is handled in the resolveAlgorithm method, which considers the explicit argument, key metadata, and defaults.
 			JWSAlgorithm	alg			= JWSAlgorithm.parse( algorithm );
+			// Create the appropriate JWSVerifier based on the key type and algorithm. This supports RSA, EC, and HMAC keys.
 			SignedJWT		signedJWT	= SignedJWT.parse( token );
+			// Verify the signature and validate the claims. If verification fails, a JWTVerificationException is thrown.
+			// If the token is expired or not yet valid, specific exceptions are thrown.
 			JWSVerifier		verifier	= createVerifier( key, alg );
+			// Nimbus's verify method returns a boolean, so we check the result and throw an exception if verification fails. This allows us to provide a
+			// consistent exception type for signature verification failures.
 			if ( !signedJWT.verify( verifier ) ) {
 				throw new JWTVerificationException( "JWT signature verification failed" );
 			}
+
+			// If we get here the signature is valid, so we proceed to validate the claims based on the provided options.
+			// This includes checks for expiration, not-before, issuer, audience, and any custom claim validations specified in the options.
+			// If claim validation fails, a JWTVerificationException is thrown with details about the failure.
 			JWTClaimsSet claimsSet = signedJWT.getJWTClaimsSet();
 			validateClaims( claimsSet, options );
+			// Type them to a BoxLang Struct
 			return claimsToStruct( claimsSet );
 		} catch ( JWTVerificationException e ) {
 			throw e;
@@ -551,9 +591,7 @@ public class JWTService extends BaseService {
 	}
 
 	/**
-	 * BIF implementation for JWT decryption. Accepts a JWE token, decryption key material, and options to return the decrypted payload.
-	 * For structured payloads, this returns a claims struct. For nested JWT scenarios, the returned struct includes the nested payload string for
-	 * follow-up verification.
+	 * Create a JWSVerifier based on the provided key and algorithm. Supports RSA, EC, and HMAC keys.
 	 *
 	 * @param key The key to use for verification.
 	 * @param alg The algorithm to use for verification.
@@ -563,18 +601,29 @@ public class JWTService extends BaseService {
 	 * @throws JOSEException If an error occurs while creating the verifier.
 	 */
 	private JWSVerifier createVerifier( java.security.Key key, JWSAlgorithm alg ) throws JOSEException {
+
+		// For EC algorithms (ES256, ES384, ES512) and EdDSA, we require an ECPublicKey for verification.
+		// For RSA algorithms (RS256, RS384, RS512), we require an RSAPublicKey. For HMAC algorithms (HS256, HS384, HS512), we
 		if ( key instanceof RSAPublicKey || key instanceof ECPublicKey ) {
 			if ( alg.toString().startsWith( "ES" ) || alg.toString().equals( "EdDSA" ) ) {
 				return new ECDSAVerifier( ( ECPublicKey ) key );
 			}
 			return new RSASSAVerifier( ( RSAPublicKey ) key );
 		}
+
+		// If the key is a SecretKey, we assume it's for HMAC verification. This allows symmetric keys to be used for both signing and verification.
 		if ( key instanceof SecretKey sk ) {
 			return new MACVerifier( sk );
 		}
+
+		// If the key is a PublicKey but not specifically an RSAPublicKey or ECPublicKey, we attempt to use it as an RSA public key for verification. This
+		// allows for more flexible
 		if ( key instanceof PublicKey pk ) {
 			return new RSASSAVerifier( ( RSAPublicKey ) pk );
 		}
+
+		// If the key type is not supported for verification, we throw an exception. This ensures that we only attempt to verify with compatible key types and
+		// algorithms.
 		throw new JWTKeyException( "Unsupported key type for verification: " + key.getClass().getName() );
 	}
 
@@ -753,12 +802,19 @@ public class JWTService extends BaseService {
 	 * @throws JWTVerificationException If any claim validation fails, including mismatched claims, expired tokens, or tokens not yet valid.
 	 */
 	private void validateClaims( JWTClaimsSet claimsSet, IStruct options ) {
-		Object claimsObj = options != null ? options.get( KeyDictionary.claims ) : null;
-		if ( claimsObj instanceof IStruct claims ) {
+		// Get the expected claims from the options struct, which should be under the "claims" key.
+		// This is a struct where each key is a claim name and the value is the expected claim value.
+		// Ex: options.claims = { "iss": "my-issuer", "aud": "my-audience" }
+		IStruct claims = options.getAsStruct( KeyDictionary.claims );
+
+		// Iterate over the expected claims and compare them to the actual claims in the JWTClaimsSet. If any claim does not match the expected value, throw a
+		// JWTVerificationException with details about the mismatch. This allows for flexible claim validation based
+		if ( claims != null ) {
 			for ( Map.Entry<Key, Object> entry : claims.entrySet() ) {
 				String	claimName	= entry.getKey().getName();
-				Object	expected	= entry.getValue();
+				String	expected	= StringCaster.cast( entry.getValue() );
 				Object	actual		= claimsSet.getClaim( claimName );
+				// Verify we have a match
 				if ( expected != null && !expected.equals( actual ) ) {
 					throw new JWTVerificationException(
 					    "Claim \"" + claimName + "\" mismatch: expected \"" + expected + "\", got \"" + actual
@@ -766,18 +822,24 @@ public class JWTService extends BaseService {
 				}
 			}
 		}
+
+		// Validate Time-Base Claims (exp, nbf) with Clock Skew
+
 		long clockSkewSeconds = 0;
-		if ( options != null ) {
-			Object skewObj = options.get( KeyDictionary.clockSkew );
-			if ( skewObj instanceof Number num ) {
-				clockSkewSeconds = num.longValue();
-			}
+		// If we have an options clockSkew, use it.
+		if ( options.containsKey( KeyDictionary.clockSkew ) ) {
+			clockSkewSeconds = LongCaster.cast( options.get( KeyDictionary.clockSkew ) );
+		} else {
+			// Use the module default
+			clockSkewSeconds = LongCaster.cast( getDefaultSetting( KeyDictionary.clockSkew, 0L ) );
 		}
+
 		Date	now	= new Date( System.currentTimeMillis() - clockSkewSeconds * 1000 );
 		Date	exp	= claimsSet.getExpirationTime();
 		if ( exp != null && now.after( exp ) ) {
 			throw new JWTExpiredException( "JWT has expired at " + exp );
 		}
+
 		Date nbf = claimsSet.getNotBeforeTime();
 		if ( nbf != null && now.before( nbf ) ) {
 			throw new JWTNotYetValidException( "JWT not valid before " + nbf );
@@ -949,9 +1011,8 @@ public class JWTService extends BaseService {
 	}
 
 	/**
-	 * Retrieves a setting value from the options struct, falling back to a default value if the setting is not present. This is used to determine
-	 * algorithm
-	 * choices and other configurable parameters for encryption and verification.
+	 * Retrieves a setting value from the options struct, falling back to a default value if the setting is not present.
+	 * This is used to determine algorithm choices and other configurable parameters for encryption and verification.
 	 *
 	 * @param options      The options struct that may contain the setting.
 	 * @param key          The key representing the setting to retrieve.
@@ -977,14 +1038,10 @@ public class JWTService extends BaseService {
 	 * @return The setting value from the module settings, or the default value if not present.
 	 */
 	private Object getDefaultSetting( Key key, Object defaultValue ) {
-		if ( !runtime.getModuleService().hasModule( KeyDictionary.moduleName ) ) {
+		if ( !MODULE_SETTINGS.containsKey( key ) ) {
 			return defaultValue;
 		}
-		IStruct settings = runtime.getModuleService().getModuleSettings( KeyDictionary.moduleName );
-		if ( settings == null || !settings.containsKey( key ) ) {
-			return defaultValue;
-		}
-		return settings.get( key );
+		return MODULE_SETTINGS.get( key );
 	}
 
 	/**
@@ -994,22 +1051,12 @@ public class JWTService extends BaseService {
 	 * information to parse the key material (e.g., PEM string, JWK struct, or raw secret).
 	 */
 	private void parseConfiguredKeys() {
-		if ( !runtime.getModuleService().hasModule( KeyDictionary.moduleName ) ) {
+		IStruct keyConfig = MODULE_SETTINGS.getAsStruct( KeyDictionary.keys );
+		if ( keyConfig == null || keyConfig.isEmpty() ) {
 			return;
 		}
-		IStruct settings = runtime.getModuleService().getModuleSettings( KeyDictionary.moduleName );
-		if ( settings == null ) {
-			return;
-		}
-		Object keysObj = settings.get( KeyDictionary.keys );
-		if ( keysObj == null ) {
-			return;
-		}
-		IStruct keysConfig = StructCaster.cast( keysObj );
-		if ( keysConfig.isEmpty() ) {
-			return;
-		}
-		for ( Map.Entry<Key, Object> entry : keysConfig.entrySet() ) {
+
+		for ( Map.Entry<Key, Object> entry : keyConfig.entrySet() ) {
 			String	keyName	= entry.getKey().getName();
 			IStruct	keyDef	= StructCaster.cast( entry.getValue() );
 			registerKey( keyName, keyDef );
