@@ -183,7 +183,7 @@ class {
 			args.options.keyAlgorithm = arguments.keyAlgorithm
 		}
 
-		if ( !isNull( arguments.encAlgorithm ) ) {
+		if ( !isNull( arguments.encAlgorithm ) && !arguments.encAlgorithm.isEmpty() ) {
 			args.options.encAlgorithm = arguments.encAlgorithm
 		}
 		return jwtEncrypt( argumentCollection = args )
