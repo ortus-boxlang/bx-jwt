@@ -44,10 +44,13 @@ public class JwtValidate extends BaseJwtBif {
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF.
 	 *
-	 * @argument.token     The JWT token to validate.
-	 * @argument.key       Verification key material. Optional when defaults are configured.
+	 * @argument.token The JWT token to validate.
+	 * 
+	 * @argument.key Verification key material. Optional when defaults are configured.
+	 * 
 	 * @argument.algorithm Verification algorithm. Optional when resolved from key metadata or defaults.
-	 * @argument.options   Optional validation options (claim matching, clockSkew, etc.).
+	 * 
+	 * @argument.options Optional validation options (claim matching, clockSkew, etc.).
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {

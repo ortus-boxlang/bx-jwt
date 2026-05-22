@@ -46,8 +46,8 @@ public class JwtGenerateSecretTest extends BaseIntegrationTest {
 		    """,
 		    context
 		);
-		String secret = ( String ) variables.get( "result" );
-		byte[] decoded = Base64.getDecoder().decode( secret );
+		String	secret	= ( String ) variables.get( "result" );
+		byte[]	decoded	= Base64.getDecoder().decode( secret );
 		assertThat( decoded.length ).isEqualTo( 64 ); // 512 bits = 64 bytes
 	}
 
@@ -60,8 +60,8 @@ public class JwtGenerateSecretTest extends BaseIntegrationTest {
 		    """,
 		    context
 		);
-		String secret = ( String ) variables.get( "result" );
-		byte[] decoded = Base64.getDecoder().decode( secret );
+		String	secret	= ( String ) variables.get( "result" );
+		byte[]	decoded	= Base64.getDecoder().decode( secret );
 		assertThat( decoded.length ).isEqualTo( 48 ); // 384 bits = 48 bytes
 	}
 
@@ -75,8 +75,8 @@ public class JwtGenerateSecretTest extends BaseIntegrationTest {
 		    """,
 		    context
 		);
-		String s1 = ( String ) variables.get( "result" );
-		String s2 = ( String ) variables.get( "result2" );
+		String	s1	= ( String ) variables.get( "result" );
+		String	s2	= ( String ) variables.get( "result2" );
 		assertThat( s1 ).isNotEqualTo( s2 );
 	}
 

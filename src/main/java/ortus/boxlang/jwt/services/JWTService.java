@@ -655,18 +655,18 @@ public class JWTService extends BaseService {
 		try {
 			java.security.KeyPair pair;
 			if ( algorithm.startsWith( "RS" ) ) {
-				int				keySize	= algorithm.equals( "RS512" ) ? 4096 : 2048;
+				int					keySize	= algorithm.equals( "RS512" ) ? 4096 : 2048;
 				KeyPairGenerator	kpg		= KeyPairGenerator.getInstance( "RSA" );
 				kpg.initialize( keySize, new SecureRandom() );
 				pair = kpg.generateKeyPair();
 			} else if ( algorithm.startsWith( "ES" ) ) {
-				String curveName = switch ( algorithm ) {
-					case "ES256" -> "secp256r1";
-					case "ES384" -> "secp384r1";
-					case "ES512" -> "secp521r1";
-					default -> throw new JWTKeyException( "Unsupported EC algorithm: " + algorithm );
-				};
-				KeyPairGenerator kpg = KeyPairGenerator.getInstance( "EC" );
+				String				curveName	= switch ( algorithm ) {
+													case "ES256" -> "secp256r1";
+													case "ES384" -> "secp384r1";
+													case "ES512" -> "secp521r1";
+													default -> throw new JWTKeyException( "Unsupported EC algorithm: " + algorithm );
+												};
+				KeyPairGenerator	kpg			= KeyPairGenerator.getInstance( "EC" );
 				kpg.initialize( new ECGenParameterSpec( curveName ), new SecureRandom() );
 				pair = kpg.generateKeyPair();
 			} else {
@@ -681,7 +681,7 @@ public class JWTService extends BaseService {
 			    + mime.encodeToString( pair.getPublic().getEncoded() )
 			    + "\n-----END PUBLIC KEY-----";
 
-			IStruct result = new Struct();
+			IStruct			result		= new Struct();
 			result.put( KeyDictionary.privateKey, privatePem );
 			result.put( KeyDictionary.publicKey, publicPem );
 			return result;
@@ -758,9 +758,9 @@ public class JWTService extends BaseService {
 			}
 
 			// Carry original JOSE headers (e.g., kid) into the refreshed token unless overridden
-			IStruct	createOptions	= new Struct();
-			IStruct	origHeaders		= new Struct();
-			JWSHeader originalHeader = signedJWT.getHeader();
+			IStruct		createOptions	= new Struct();
+			IStruct		origHeaders		= new Struct();
+			JWSHeader	originalHeader	= signedJWT.getHeader();
 			if ( originalHeader.getKeyID() != null ) {
 				origHeaders.put( Key.of( "kid" ), originalHeader.getKeyID() );
 			}

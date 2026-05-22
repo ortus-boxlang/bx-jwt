@@ -33,8 +33,8 @@ public class JwtDecode extends BaseJwtBif {
 	 *
 	 * <pre>{@code
 	 * decoded = jwtDecode( token );
-	 * kid     = decoded.header.kid;
-	 * sub     = decoded.payload.sub;
+	 * kid = decoded.header.kid;
+	 * sub = decoded.payload.sub;
 	 * }</pre>
 	 *
 	 * @param context   The context in which the BIF is being invoked.
