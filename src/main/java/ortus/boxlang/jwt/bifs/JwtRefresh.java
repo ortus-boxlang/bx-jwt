@@ -53,10 +53,13 @@ public class JwtRefresh extends BaseJwtBif {
 	 * @param context   The context in which the BIF is being invoked.
 	 * @param arguments Argument scope for the BIF.
 	 *
-	 * @argument.token     The existing JWT to refresh.
-	 * @argument.key       Key material used for both verification and re-signing. Optional when defaults are configured.
+	 * @argument.token The existing JWT to refresh.
+	 * 
+	 * @argument.key Key material used for both verification and re-signing. Optional when defaults are configured.
+	 * 
 	 * @argument.algorithm The JWS algorithm. Optional when resolved from key metadata or defaults.
-	 * @argument.options   Optional refresh options: allowExpired, expireIn, headers.
+	 * 
+	 * @argument.options Optional refresh options: allowExpired, expireIn, headers.
 	 */
 	@Override
 	public Object _invoke( IBoxContext context, ArgumentsScope arguments ) {
